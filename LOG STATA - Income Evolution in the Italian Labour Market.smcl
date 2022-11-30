@@ -1,0 +1,1998 @@
+{smcl}
+{com}{sf}{ul off}{txt}{.-}
+      name:  {res}<unnamed>
+       {txt}log:  {res}C:\Users\ac18a\Videos\STATA PROJECTS\STATA PROJECT\LOG_RESEARCH_ON_INCOME.smcl
+  {txt}log type:  {res}smcl
+ {txt}opened on:  {res}30 Nov 2022, 16:49:15
+{txt}
+{com}. 
+. // Using a 2% extract of INPS Data on Italian Workers from 2005 to 2016.
+. 
+. use alldata.dta
+{txt}
+{com}. 
+. drop mese anno_nasc anno_morte id_azienda_madre posizione ateco07_2_calc regioncode COD_REG _spell jobloss 
+{txt}
+{com}. 
+. ssc install estout, replace
+{txt}checking {hilite:estout} consistency and verifying not already installed...
+all files already exist and are up to date.
+
+{com}. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // GENERATING OUR VARIABLES
+. 
+. // Variables added: n_lavori, timemax, primo_stipendio, reduced_class_dim, income_nuovo_lavoro, ultimo_stipendio, RGDP_adj_income_nuovo_lavoro, RGDP_adj_ultimo_stipendio.
+. 
+. // Firstly, we only want to consider income from employment
+. 
+. replace income = . if emp == 0
+{txt}(814,087 real changes made, 814,087 to missing)
+
+{com}. 
+. // 1) N_LAVORI
+. 
+. // The first variable we are interested in gnerating is the number of jobs that a person changes throughout the our range of time, so that we can use it to see wheter it is better to chage job often or remaining loyal to the same firm in order to have an increase in salary.
+. 
+. egen n_lavori = count(id_lavoratore) if id_azienda[_n] != id_azienda[_n - 1] | empduration == 1, by(id_lavoratore)
+{txt}(13,809,569 missing values generated)
+
+{com}. 
+. gen cambio_lavoro = 1 if n_lavori != .
+{txt}(13,809,569 missing values generated)
+
+{com}. 
+. by id_lavoratore: replace n_lavori = n_lavori[1]
+{txt}(13,809,569 real changes made)
+
+{com}. 
+. drop id_azienda empduration
+{txt}
+{com}. 
+. // 2) TIMEMAX
+. 
+. // We create the variable timemax that shows how much time a person remains in the dataset  
+. 
+. egen timemax = max(time), by(id_lavoratore)
+{txt}
+{com}. 
+. // 3) PRIMO_STIPENDIO
+. 
+. // We created this variable to show what is the first income when a person enters the dataset
+. 
+. by id_lavoratore: gen primo_stipendio = income if time==1
+{txt}(14,201,978 missing values generated)
+
+{com}. 
+. // 4) REDUCED_CLASS_DIM with descriptive stat
+. 
+. // We group firm size to reduce the quantity of dummy variables
+.  
+. gen reduced_class_dim = "micro" if class_dim <= 2
+{txt}(10,655,848 missing values generated)
+
+{com}. 
+. replace reduced_class_dim = "piccole" if class_dim>2 & class_dim<=8
+{txt}variable {bf}{res}reduced_class_dim{sf}{txt} was {bf}{res}str5{sf}{txt} now {bf}{res}str7{sf}
+{txt}(2,827,643 real changes made)
+
+{com}. 
+. replace reduced_class_dim = "medie" if class_dim>8 & class_dim<=11
+{txt}(2,442,558 real changes made)
+
+{com}. 
+. replace reduced_class_dim = "grandi" if class_dim>11 & class_dim<=14
+{txt}(3,612,305 real changes made)
+
+{com}. 
+. replace reduced_class_dim = "sconosciuta" if class_dim == .
+{txt}variable {bf}{res}reduced_class_dim{sf}{txt} was {bf}{res}str7{sf}{txt} now {bf}{res}str11{sf}
+{txt}(1,773,342 real changes made)
+
+{com}. 
+. drop class_dim
+{txt}
+{com}. 
+. // 5) INCOME_NUOVO_LAVORO
+. 
+. // First salary of a new job
+. 
+. gen income_nuovo_lavoro = income if cambio_lavoro == 1 & time != 1
+{txt}(14,109,754 missing values generated)
+
+{com}. 
+. // 6) ULTIMO_STIPENDIO
+. 
+. // This variable indicates the salary of a person the month before getting a new job
+. 
+. gen ultimo_stipendio = income[_n - 1] if time != 1 & cambio_lavoro == 1
+{txt}(14,110,171 missing values generated)
+
+{com}. 
+. // we also want to add the salary that an unemployed person got in his last job
+. 
+. gen ultimo_stipendio_poi_disoccupati = ultimo_stipendio if emp == 0 & emp[_n - 1] == 1
+{txt}(14,235,823 missing values generated)
+
+{com}. 
+. replace ultimo_stipendio_poi_disoccupati = ultimo_stipendio_poi_disoccupati[_n - 1] if ultimo_stipendio_poi_disoccupati == . & emp == 0 & emp[_n - 1] == 0
+{txt}(1,609,796 real changes made)
+
+{com}. 
+. replace ultimo_stipendio = ultimo_stipendio_poi_disoccupati[_n - 1] if ultimo_stipendio == . & income_nuovo_lavoro != .
+{txt}(129,836 real changes made)
+
+{com}. 
+. drop ultimo_stipendio_poi_disoccupati
+{txt}
+{com}. 
+. // 7) RGDP_ADJ_INCOME_NUOVO_LAVORO
+. 
+. // We then adjust by Real GDP the three variables INCOME_NUOVO_LAVORO, ULTIMO_STIPENDIO, INCOME
+. 
+. merge m:1 anno_m using inflation&gdp_values
+{res}
+{txt}{col 5}Result{col 33}Number of obs
+{col 5}{hline 41}
+{col 5}Not matched{col 30}{res}               0
+{txt}{col 5}Matched{col 30}{res}      14,365,734{txt}  (_merge==3)
+{col 5}{hline 41}
+
+{com}. 
+. drop _merge HCPI Nominal_GDP
+{txt}
+{com}. 
+. sort id_lavoratore anno_m
+{txt}
+{com}. 
+. scalar media_REAL_GDP = 1707809
+{txt}
+{com}. 
+. gen RGDP_adj_income_nuovo_lavoro = (income_nuovo_lavoro / Real_GDP) * media_REAL_GDP
+{txt}(14,109,754 missing values generated)
+
+{com}. 
+. // 8) RGDP_ADJ_ULTIMO_STIPENDIO
+. 
+. gen RGDP_adj_ultimo_stipendio = (ultimo_stipendio / Real_GDP) * media_REAL_GDP
+{txt}(13,980,335 missing values generated)
+
+{com}. 
+. // 9) RGDP_adj_income
+. 
+. gen RGDP_adj_income = (income / Real_GDP) * media_REAL_GDP
+{txt}(1,860,506 missing values generated)
+
+{com}. 
+. scalar drop media_REAL_GDP
+{txt}
+{com}. 
+. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // DESCRIPTIVE STATISTICS variable INCOME
+. 
+. preserve
+{txt}
+{com}. 
+. collapse income, by(id_lavoratore)
+{res}{txt}
+{com}. 
+. twoway hist income if income <= 60000, bin(500) percent xlabel(0 10000 20000 30000 40000 50000 60000, valuelabel)
+{res}{txt}
+{com}. 
+. graph export hist_income.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+hist_income.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. sum income, d
+
+                        {txt}(mean) income
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}      100              0
+{txt} 5%    {res}      700              0
+{txt}10%    {res}  1993.75              0       {txt}Obs         {res}    164,999
+{txt}25%    {res} 6895.122              0       {txt}Sum of wgt. {res}    164,999
+
+{txt}50%    {res} 14166.95                      {txt}Mean          {res}  16804.3
+                        {txt}Largest       Std. dev.     {res} 15658.32
+{txt}75%    {res}    22000       200841.7
+{txt}90%    {res}    32225       206966.7       {txt}Variance      {res} 2.45e+08
+{txt}95%    {res} 42216.67         207000       {txt}Skewness      {res} 3.359643
+{txt}99%    {res} 76094.52       212308.3       {txt}Kurtosis      {res} 25.06344
+{txt}
+{com}. 
+. // Median: €14166.95  Mean: €16804.3
+. 
+. restore
+{txt}
+{com}. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // DESCRIPTIVE STATISTICS QUALITATIVE variables already in the dataset
+. 
+. // Qualitative variables already in the dataset used in the final regressions listed in alphabetical order: age_group, macro_region, qualifica, sesso, tipo_contratto 
+. 
+. tab age_group
+
+        {txt}age {c |}
+categorized {c |}
+in 5 groups {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      15-24 {c |}{res}    905,755        6.30        6.30
+{txt}      25-34 {c |}{res}  3,608,154       25.12       31.42
+{txt}      35-44 {c |}{res}  4,542,255       31.62       63.04
+{txt}      45-54 {c |}{res}  3,607,715       25.11       88.15
+{txt}      55-64 {c |}{res}  1,701,855       11.85      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 14,365,734      100.00
+{txt}
+{com}. 
+. tab macro_region 
+
+    {txt}Italian {c |}
+     larger {c |}
+    regions {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+     Centre {c |}{res}  2,903,039       20.21       20.21
+{txt} North-east {c |}{res}  3,283,926       22.86       43.07
+{txt} North-west {c |}{res}  4,638,360       32.29       75.36
+{txt}      South {c |}{res}  3,540,409       24.64      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 14,365,734      100.00
+{txt}
+{com}. 
+. tab qualifica
+
+  {txt}QUALIFICA {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      altro {c |}{res}     40,043        0.28        0.28
+{txt}apprendista {c |}{res}    587,284        4.09        4.37
+{txt}  dirigente {c |}{res}    127,977        0.89        5.26
+{txt}  impiegato {c |}{res}  5,119,379       35.64       40.89
+{txt}    operaio {c |}{res}  8,088,149       56.30       97.20
+{txt}     quadro {c |}{res}    402,902        2.80      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 14,365,734      100.00
+{txt}
+{com}. 
+. // Mainly operaio (56.3%) and impiegato (35.6%). 4% apprendista.
+. 
+. tab qualifica if age <= 30
+
+  {txt}QUALIFICA {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      altro {c |}{res}      5,420        0.19        0.19
+{txt}apprendista {c |}{res}    545,482       19.18       19.37
+{txt}  dirigente {c |}{res}        240        0.01       19.38
+{txt}  impiegato {c |}{res}    782,992       27.53       46.91
+{txt}    operaio {c |}{res}  1,508,178       53.03       99.93
+{txt}     quadro {c |}{res}      1,881        0.07      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res}  2,844,193      100.00
+{txt}
+{com}. 
+. // Operaio still the main occupation (53.0%). Apprendista grows to 19.18% while impiegato drops to 27.53%.
+. 
+. tab qualifica if age > 30
+
+  {txt}QUALIFICA {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      altro {c |}{res}     34,623        0.30        0.30
+{txt}apprendista {c |}{res}     41,802        0.36        0.66
+{txt}  dirigente {c |}{res}    127,737        1.11        1.77
+{txt}  impiegato {c |}{res}  4,336,387       37.64       39.41
+{txt}    operaio {c |}{res}  6,579,971       57.11       96.52
+{txt}     quadro {c |}{res}    401,021        3.48      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 11,521,541      100.00
+{txt}
+{com}. 
+. // Not particularly different than with under 30. Obviously apprendista drops (to 2.1%)
+. 
+. // Why did we divide between younger and older than 30? Because if a person is younger than 24 its first income in the sample is much more likely to be its first income in its life compared to an older person. This is important because we will study primo_stipendio (first income appearing in the sample). Therefore now observe the observations at time == 1 (remeber, first and last time period in the sample the indivdual is always employed). What "qualifica" was such supposedly first job? 
+. 
+. tab qualifica if time == 1 & age <= 30
+
+  {txt}QUALIFICA {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      altro {c |}{res}        163        0.27        0.27
+{txt}apprendista {c |}{res}     12,089       19.92       20.19
+{txt}  dirigente {c |}{res}         10        0.02       20.21
+{txt}  impiegato {c |}{res}     16,419       27.06       47.27
+{txt}    operaio {c |}{res}     31,959       52.67       99.93
+{txt}     quadro {c |}{res}         40        0.07      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res}     60,680      100.00
+{txt}
+{com}. 
+. // The great majority of the are operaio (52.6%), impiegato (27.06%) ad apprendista (19.92)
+.  
+. // Does the situation change for older age_groups (and so less likely first-jobs)?
+. 
+. tab qualifica if time == 1 & age > 30
+
+  {txt}QUALIFICA {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+      altro {c |}{res}        353        0.34        0.34
+{txt}apprendista {c |}{res}        116        0.11        0.45
+{txt}  dirigente {c |}{res}      1,075        1.02        1.47
+{txt}  impiegato {c |}{res}     36,315       34.53       36.00
+{txt}    operaio {c |}{res}     64,579       61.41       97.41
+{txt}     quadro {c |}{res}      2,719        2.59      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res}    105,157      100.00
+{txt}
+{com}. 
+. // Yes! The amount of apprendista drastically declines to a 0.11 percent. We can see how the great majority of workers remains operaio, with a 61.4%. We have to remember that those people are much less likely to be working their first actual job than the ones younger than 30.
+. 
+. tab sesso
+
+      {txt}SESSO {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+          F {c |}{res}  5,568,817       38.76       38.76
+{txt}          M {c |}{res}  8,796,917       61.24      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 14,365,734      100.00
+{txt}
+{com}. 
+. // 61.2% male. 38.8% female
+. 
+. tab tipo_contratto 
+
+    {txt}type of {c |}
+   contract {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+       open {c |}{res} 10,810,901       85.81       85.81
+{txt}       temp {c |}{res}  1,787,244       14.19      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 12,598,145      100.00
+{txt}
+{com}. 
+. // 85.8% open contracts. 14.2% temporary.
+. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // DESCRIPTIVE STATISTICS added variables
+. 
+. // 1) N_LAVORI and TIMEMAX
+. 
+. sum n_lavori, d
+
+                          {txt}n_lavori
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        1              1
+{txt} 5%    {res}        1              1
+{txt}10%    {res}        1              1       {txt}Obs         {res} 14,365,734
+{txt}25%    {res}        1              1       {txt}Sum of wgt. {res}   14365734
+
+{txt}50%    {res}        3                      {txt}Mean          {res} 3.942955
+                        {txt}Largest       Std. dev.     {res} 3.664312
+{txt}75%    {res}        5             50
+{txt}90%    {res}        9             50       {txt}Variance      {res} 13.42718
+{txt}95%    {res}       11             50       {txt}Skewness      {res} 2.142904
+{txt}99%    {res}       18             50       {txt}Kurtosis      {res} 9.743887
+{txt}
+{com}. 
+. // The number of jobs that an individual had throughout the dataset is pretty low. More than the 40% of the observations shows people that never change job in the dataset. Does this happen because they change few jobs or because we have many people remaining for a small interval in the dataset?
+. 
+. // Let's see the distribution of the time that people spend in the dataset and how much it affects the low median value of n_lavori
+. 
+. sum timemax if time == 1, d
+
+                           {txt}timemax
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        1              1
+{txt} 5%    {res}        4              1
+{txt}10%    {res}       11              1       {txt}Obs         {res}    165,837
+{txt}25%    {res}       36              1       {txt}Sum of wgt. {res}    165,837
+
+{txt}50%    {res}       96                      {txt}Mean          {res} 86.62563
+                        {txt}Largest       Std. dev.     {res} 52.34533
+{txt}75%    {res}      144            144
+{txt}90%    {res}      144            144       {txt}Variance      {res} 2740.033
+{txt}95%    {res}      144            144       {txt}Skewness      {res}-.2799187
+{txt}99%    {res}      144            144       {txt}Kurtosis      {res} 1.526268
+{txt}
+{com}. 
+. hist timemax if time == 1, percent
+{txt}(bin={res}52{txt}, start={res}1{txt}, width={res}2.75{txt})
+{res}{txt}
+{com}. 
+. graph export hist_timemax.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+hist_timemax.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. // we see that around 30% of people is present during the whole 12 years. However, a little ore than 10% remains only for less than a year and around 25% for less than 3 years.
+. 
+. sum n_lavori if timemax >= 12, d
+
+                          {txt}n_lavori
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        1              1
+{txt} 5%    {res}        1              1
+{txt}10%    {res}        1              1       {txt}Obs         {res} 14,285,627
+{txt}25%    {res}        1              1       {txt}Sum of wgt. {res}   14285627
+
+{txt}50%    {res}        3                      {txt}Mean          {res} 3.958425
+                        {txt}Largest       Std. dev.     {res} 3.668478
+{txt}75%    {res}        5             50
+{txt}90%    {res}        9             50       {txt}Variance      {res} 13.45773
+{txt}95%    {res}       11             50       {txt}Skewness      {res} 2.137557
+{txt}99%    {res}       18             50       {txt}Kurtosis      {res}  9.71584
+{txt}
+{com}. 
+. // The situation slightly changes if we exclude those who work less than a year
+. 
+. sum n_lavori if timemax >= 36, d
+
+                          {txt}n_lavori
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        1              1
+{txt} 5%    {res}        1              1
+{txt}10%    {res}        1              1       {txt}Obs         {res} 13,789,780
+{txt}25%    {res}        1              1       {txt}Sum of wgt. {res}   13789780
+
+{txt}50%    {res}        3                      {txt}Mean          {res} 4.029644
+                        {txt}Largest       Std. dev.     {res} 3.704243
+{txt}75%    {res}        5             50
+{txt}90%    {res}        9             50       {txt}Variance      {res} 13.72141
+{txt}95%    {res}       11             50       {txt}Skewness      {res} 2.103513
+{txt}99%    {res}       18             50       {txt}Kurtosis      {res}   9.5075
+{txt}
+{com}. 
+. // It changes further excluding who works less that 3 years, and the average increases.
+. 
+. sum n_lavori if timemax >= 144, d
+
+                          {txt}n_lavori
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        1              1
+{txt} 5%    {res}        1              1
+{txt}10%    {res}        1              1       {txt}Obs         {res}  6,794,784
+{txt}25%    {res}        1              1       {txt}Sum of wgt. {res}  6,794,784
+
+{txt}50%    {res}        2                      {txt}Mean          {res} 3.314225
+                        {txt}Largest       Std. dev.     {res} 3.242479
+{txt}75%    {res}        4             39
+{txt}90%    {res}        7             39       {txt}Variance      {res} 10.51367
+{txt}95%    {res}       10             39       {txt}Skewness      {res} 2.620189
+{txt}99%    {res}       16             39       {txt}Kurtosis      {res} 13.29838
+{txt}
+{com}. 
+. // The situation changes counterintuitively if we only consider only who is present for the whole duration of the dataset. Indeed the average diminishes (from 3.94 to 3.31) therefore, who is present for the whole dataset changes on average less jobs that those who are present for only three years. We think that this might be due to different types of workers.
+. 
+. tab n_lavori qualifica if timemax >= 144
+
+           {txt}{c |}                             QUALIFICA
+  n_lavori {c |}     altro  apprend..  dirigente  impiegato    operaio     quadro {c |}     Total
+{hline 11}{c +}{hline 66}{c +}{hline 10}
+         1 {c |}{res}     4,453      9,053     28,681  1,067,016  1,222,897    105,388 {txt}{c |}{res} 2,437,488 
+{txt}         2 {c |}{res}     2,592      9,887     21,473    552,953    616,328     80,959 {txt}{c |}{res} 1,284,192 
+{txt}         3 {c |}{res}     2,961     14,948     14,950    413,203    496,294     63,484 {txt}{c |}{res} 1,005,840 
+{txt}         4 {c |}{res}     1,597     10,480      8,329    204,422    279,408     25,828 {txt}{c |}{res}   530,064 
+{txt}         5 {c |}{res}       595     10,057      4,671    151,514    242,243     10,968 {txt}{c |}{res}   420,048 
+{txt}         6 {c |}{res}       588      6,257      2,734     88,464    159,768      5,565 {txt}{c |}{res}   263,376 
+{txt}         7 {c |}{res}       117      7,111        962     67,142    144,655      2,637 {txt}{c |}{res}   222,624 
+{txt}         8 {c |}{res}       909      5,778        626     41,916    100,662      1,309 {txt}{c |}{res}   151,200 
+{txt}         9 {c |}{res}       402      4,034        220     27,910     84,298        784 {txt}{c |}{res}   117,648 
+{txt}        10 {c |}{res}       294      3,185          0     19,710     59,322        145 {txt}{c |}{res}    82,656 
+{txt}        11 {c |}{res}       240      2,478          0     12,674     46,767        193 {txt}{c |}{res}    62,352 
+{txt}        12 {c |}{res}         0      1,875        178     10,335     32,515        169 {txt}{c |}{res}    45,072 
+{txt}        13 {c |}{res}        35      1,164          0      7,215     30,773        125 {txt}{c |}{res}    39,312 
+{txt}        14 {c |}{res}       184      1,320          0      4,928     23,664          0 {txt}{c |}{res}    30,096 
+{txt}        15 {c |}{res}        17        611          0      3,431     20,709          0 {txt}{c |}{res}    24,768 
+{txt}        16 {c |}{res}         5        852          0      2,833     12,265         29 {txt}{c |}{res}    15,984 
+{txt}        17 {c |}{res}         0        375          0      1,392     11,769          0 {txt}{c |}{res}    13,536 
+{txt}        18 {c |}{res}         0        292          0      1,459     10,201          0 {txt}{c |}{res}    11,952 
+{txt}        19 {c |}{res}         8        327          0        839      9,626          0 {txt}{c |}{res}    10,800 
+{txt}        20 {c |}{res}         0        242          0        583      4,935          0 {txt}{c |}{res}     5,760 
+{txt}        21 {c |}{res}         0        219          0        855      5,694          0 {txt}{c |}{res}     6,768 
+{txt}        22 {c |}{res}         0         14          0        165      2,701          0 {txt}{c |}{res}     2,880 
+{txt}        23 {c |}{res}         0         93          0        352      1,283          0 {txt}{c |}{res}     1,728 
+{txt}        24 {c |}{res}         0         20          0        292      1,560          0 {txt}{c |}{res}     1,872 
+{txt}        25 {c |}{res}         0          0          0        235      1,061          0 {txt}{c |}{res}     1,296 
+{txt}        26 {c |}{res}         0          0          0          0        576          0 {txt}{c |}{res}       576 
+{txt}        27 {c |}{res}         0          0          0        144      1,008          0 {txt}{c |}{res}     1,152 
+{txt}        28 {c |}{res}         0          0          0          0        144          0 {txt}{c |}{res}       144 
+{txt}        29 {c |}{res}         0          0          0          0        864          0 {txt}{c |}{res}       864 
+{txt}        30 {c |}{res}         0          0          0        146        286          0 {txt}{c |}{res}       432 
+{txt}        31 {c |}{res}         0          0          0          0        432          0 {txt}{c |}{res}       432 
+{txt}        33 {c |}{res}         0          0          0          0        288          0 {txt}{c |}{res}       288 
+{txt}        34 {c |}{res}         0         13          0          7        556          0 {txt}{c |}{res}       576 
+{txt}        35 {c |}{res}         0          0          0        144          0          0 {txt}{c |}{res}       144 
+{txt}        36 {c |}{res}         0          4          0        317        255          0 {txt}{c |}{res}       576 
+{txt}        37 {c |}{res}         0          0          0          0        144          0 {txt}{c |}{res}       144 
+{txt}        39 {c |}{res}         0          0          0         29        115          0 {txt}{c |}{res}       144 
+{txt}{hline 11}{c +}{hline 66}{c +}{hline 10}
+     Total {c |}{res}    14,997     90,689     82,824  2,682,625  3,626,066    297,583 {txt}{c |}{res} 6,794,784 
+{txt}
+{com}. 
+. display 18314/24985
+{res}.7329998
+{txt}
+{com}. 
+. tab n_lavori qualifica
+
+           {txt}{c |}                             QUALIFICA
+  n_lavori {c |}     altro  apprend..  dirigente  impiegato    operaio     quadro {c |}     Total
+{hline 11}{c +}{hline 66}{c +}{hline 10}
+         1 {c |}{res}     9,865    101,984     51,650  1,889,333  2,197,135    155,488 {txt}{c |}{res} 4,405,455 
+{txt}         2 {c |}{res}     5,472     53,650     29,200    856,397    991,802    102,157 {txt}{c |}{res} 2,038,678 
+{txt}         3 {c |}{res}     9,225    109,978     22,972    849,659  1,274,856     82,955 {txt}{c |}{res} 2,349,645 
+{txt}         4 {c |}{res}     3,647     54,654     11,531    398,598    602,013     31,274 {txt}{c |}{res} 1,101,717 
+{txt}         5 {c |}{res}     2,895     70,254      6,159    365,494    728,929     15,698 {txt}{c |}{res} 1,189,429 
+{txt}         6 {c |}{res}     1,315     40,342      3,801    203,163    414,531      7,608 {txt}{c |}{res}   670,760 
+{txt}         7 {c |}{res}     1,478     41,775      1,201    170,406    452,827      3,699 {txt}{c |}{res}   671,386 
+{txt}         8 {c |}{res}     1,719     28,926        850    105,095    282,834      1,806 {txt}{c |}{res}   421,230 
+{txt}         9 {c |}{res}     1,135     24,520        346     80,801    269,372        987 {txt}{c |}{res}   377,161 
+{txt}        10 {c |}{res}       697     14,264          2     53,235    173,794        393 {txt}{c |}{res}   242,385 
+{txt}        11 {c |}{res}       698     13,468         34     41,215    158,165        242 {txt}{c |}{res}   213,822 
+{txt}        12 {c |}{res}       333      8,569        220     27,783    111,463        220 {txt}{c |}{res}   148,588 
+{txt}        13 {c |}{res}       393      6,829          0     23,173     99,245        188 {txt}{c |}{res}   129,828 
+{txt}        14 {c |}{res}       348      5,722          0     13,779     70,203         48 {txt}{c |}{res}    90,100 
+{txt}        15 {c |}{res}       170      3,105          0     10,274     62,602         80 {txt}{c |}{res}    76,231 
+{txt}        16 {c |}{res}       171      2,666          0      7,434     40,550         29 {txt}{c |}{res}    50,850 
+{txt}        17 {c |}{res}       148      1,597          0      5,678     35,726          7 {txt}{c |}{res}    43,156 
+{txt}        18 {c |}{res}        72      1,647          0      4,507     25,698          0 {txt}{c |}{res}    31,924 
+{txt}        19 {c |}{res}         8      1,184          0      3,164     25,592         23 {txt}{c |}{res}    29,971 
+{txt}        20 {c |}{res}       118        729          0      2,053     15,835          0 {txt}{c |}{res}    18,735 
+{txt}        21 {c |}{res}        65        706          0      1,919     17,913          0 {txt}{c |}{res}    20,603 
+{txt}        22 {c |}{res}         1        127          0        928      7,967          0 {txt}{c |}{res}     9,023 
+{txt}        23 {c |}{res}         0        309         11      1,354      8,151          0 {txt}{c |}{res}     9,825 
+{txt}        24 {c |}{res}        70         73          0        627      5,944          0 {txt}{c |}{res}     6,714 
+{txt}        25 {c |}{res}         0        148          0        813      3,294          0 {txt}{c |}{res}     4,255 
+{txt}        26 {c |}{res}         0          5          0        344      2,445          0 {txt}{c |}{res}     2,794 
+{txt}        27 {c |}{res}         0          0          0        567      1,515          0 {txt}{c |}{res}     2,082 
+{txt}        28 {c |}{res}         0         34          0        107      1,470          0 {txt}{c |}{res}     1,611 
+{txt}        29 {c |}{res}         0          0          0        147      2,062          0 {txt}{c |}{res}     2,209 
+{txt}        30 {c |}{res}         0          0          0        150      1,219          0 {txt}{c |}{res}     1,369 
+{txt}        31 {c |}{res}         0          0          0        141        566          0 {txt}{c |}{res}       707 
+{txt}        32 {c |}{res}         0          0          0        191         81          0 {txt}{c |}{res}       272 
+{txt}        33 {c |}{res}         0          0          0          0        691          0 {txt}{c |}{res}       691 
+{txt}        34 {c |}{res}         0         13          0          7        556          0 {txt}{c |}{res}       576 
+{txt}        35 {c |}{res}         0          0          0        144          0          0 {txt}{c |}{res}       144 
+{txt}        36 {c |}{res}         0          4          0        317        255          0 {txt}{c |}{res}       576 
+{txt}        37 {c |}{res}         0          0          0         98        326          0 {txt}{c |}{res}       424 
+{txt}        38 {c |}{res}         0          0          0          0        142          0 {txt}{c |}{res}       142 
+{txt}        39 {c |}{res}         0          0          0        171        115          0 {txt}{c |}{res}       286 
+{txt}        40 {c |}{res}         0          2          0          0        112          0 {txt}{c |}{res}       114 
+{txt}        41 {c |}{res}         0          0          0          0        123          0 {txt}{c |}{res}       123 
+{txt}        50 {c |}{res}         0          0          0        113         30          0 {txt}{c |}{res}       143 
+{txt}{hline 11}{c +}{hline 66}{c +}{hline 10}
+     Total {c |}{res}    40,043    587,284    127,977  5,119,379  8,088,149    402,902 {txt}{c |}{res}14,365,734 
+{txt}
+{com}. 
+. display 52734/96538
+{res}.54625122
+{txt}
+{com}. 
+. // We can notice how the ratio impiegati/operai in the subset of who works for 144 months (0.733) is much higher than the one of the entire dataset (0.546). If an employee changes job less frequently than a worker would do, this could explain the counterintuitive result that we obtrained before
+. 
+. sum n_lavori if qualifica == "operaio"
+
+{txt}    Variable {c |}        Obs        Mean    Std. dev.       Min        Max
+{hline 13}{c +}{hline 57}
+{space 4}n_lavori {c |}{res}  8,088,149    4.483219    4.065464          1         50
+{txt}
+{com}. 
+. sum n_lavori if qualifica == "impiegato"
+
+{txt}    Variable {c |}        Obs        Mean    Std. dev.       Min        Max
+{hline 13}{c +}{hline 57}
+{space 4}n_lavori {c |}{res}  5,119,379    3.149652    2.874691          1         50
+{txt}
+{com}. 
+. // As we supposed, the average of n_lavori of an employee (2.73) is drastically lower than the one of a worker (3.59). 
+. 
+. // People who change job are in total:
+. 
+. count if n_lavori >= 2 & n_lavori != .
+  {res}9,960,279
+{txt}
+{com}. 
+. // in percentage:
+. 
+. count if time == 1 
+  {res}165,837
+{txt}
+{com}. 
+. display 97981 / 165837
+{res}.59082714
+{txt}
+{com}. 
+. count if n_lavori >= 2 & n_lavori != . & timemax == 144
+  {res}4,357,296
+{txt}
+{com}. 
+. count if time == 1 & timemax == 144
+  {res}47,186
+{txt}
+{com}. 
+. display 30259 / 47186
+{res}.64127072
+{txt}
+{com}. 
+. // 59% of all individuals observed changes job at least once. The number increases if we only consider people who remain for the whole 12 years in the dataset.
+. 
+. // 2) PRIMO_STIPENDIO
+. 
+. sum primo_stipendio, d
+
+                       {txt}primo_stipendio
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        0              0
+{txt} 5%    {res}      300              0
+{txt}10%    {res}      800              0       {txt}Obs         {res}    163,756
+{txt}25%    {res}     2800              0       {txt}Sum of wgt. {res}    163,756
+
+{txt}50%    {res}     9600                      {txt}Mean          {res} 13021.15
+                        {txt}Largest       Std. dev.     {res} 14283.15
+{txt}75%    {res}    18700         185300
+{txt}90%    {res}    27600         189300       {txt}Variance      {res} 2.04e+08
+{txt}95%    {res}    36100         203700       {txt}Skewness      {res} 3.422826
+{txt}99%    {res}    64600         207400       {txt}Kurtosis      {res} 26.63883
+{txt}
+{com}. 
+. // We can see how the average is extremely low. Moreover some values do not make much sense for example: 5 percent earns less than 300 euros ANNUALLY, 10 percent less than 800. How is this possible? Are they all "apprendista"? Let's check
+. 
+. sum primo_stipendio if qualifica != "apprendista", d
+
+                       {txt}primo_stipendio
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        0              0
+{txt} 5%    {res}      300              0
+{txt}10%    {res}      700              0       {txt}Obs         {res}    151,683
+{txt}25%    {res}     2900              0       {txt}Sum of wgt. {res}    151,683
+
+{txt}50%    {res}    10300                      {txt}Mean          {res} 13514.25
+                        {txt}Largest       Std. dev.     {res} 14654.06
+{txt}75%    {res}    19400         185300
+{txt}90%    {res}    28400         189300       {txt}Variance      {res} 2.15e+08
+{txt}95%    {res}    37100         203700       {txt}Skewness      {res} 3.336777
+{txt}99%    {res}    66400         207400       {txt}Kurtosis      {res} 25.48752
+{txt}
+{com}. 
+. // The situation remains more or less similar. It is certainly not because everyone is an apprendista
+. 
+. // We checked the data manually and we found out that many data make zero sense. Probably some of them were monthly wages indicated wrongly as yearly. Other were values too low to even be monthly and other too low to be yearly and too high to be monthly for a certian occupation. As a result, we decided to avoid all incomes below 10000 euros in our regressions.
+. 
+. // 3) REDUCED_CLASS_DIM 
+. 
+. tab reduced_class_dim
+
+{txt}reduced_cla {c |}
+     ss_dim {c |}      Freq.     Percent        Cum.
+{hline 12}{c +}{hline 35}
+     grandi {c |}{res}  3,612,305       25.15       25.15
+{txt}      medie {c |}{res}  2,442,558       17.00       42.15
+{txt}      micro {c |}{res}  3,709,886       25.82       67.97
+{txt}    piccole {c |}{res}  2,827,643       19.68       87.66
+{txt}sconosciuta {c |}{res}  1,773,342       12.34      100.00
+{txt}{hline 12}{c +}{hline 35}
+      Total {c |}{res} 14,365,734      100.00
+{txt}
+{com}. 
+. // 4) PRIMO_STIPENDIO, INCOME_NUOVO_LAVORO, ULTIMO_STIPENDIO, RGDP_ADJ_INCOME_NUOVO_LAVORO, RGDP_ADJ_ULTIMO_STIPENDIO & RGDP_adj_income
+. 
+. preserve
+{txt}
+{com}. 
+. collapse primo_stipendio income_nuovo_lavoro ultimo_stipendio RGDP_adj_income_nuovo_lavoro RGDP_adj_ultimo_stipendio RGDP_adj_income, by(id_lavoratore)
+{res}{txt}
+{com}. 
+. sum primo_stipendio, d
+
+                   {txt}(mean) primo_stipendio
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}        0              0
+{txt} 5%    {res}      300              0
+{txt}10%    {res}      800              0       {txt}Obs         {res}    163,756
+{txt}25%    {res}     2800              0       {txt}Sum of wgt. {res}    163,756
+
+{txt}50%    {res}     9600                      {txt}Mean          {res} 13021.15
+                        {txt}Largest       Std. dev.     {res} 14283.15
+{txt}75%    {res}    18700         185300
+{txt}90%    {res}    27600         189300       {txt}Variance      {res} 2.04e+08
+{txt}95%    {res}    36100         203700       {txt}Skewness      {res} 3.422826
+{txt}99%    {res}    64600         207400       {txt}Kurtosis      {res} 26.63883
+{txt}
+{com}. 
+. twoway hist primo_stipendio if primo_stipendio <= 60000, bin(500) percent xlabel(0 10000 20000 30000 40000 50000 60000, valuelabel)
+{res}{txt}
+{com}. 
+. graph export hist_primo_stipendio.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+hist_primo_stipendio.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. sum income_nuovo_lavoro, d
+
+                 {txt}(mean) income_nuovo_lavoro
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}      100              0
+{txt} 5%    {res}      700              0
+{txt}10%    {res}     1800              0       {txt}Obs         {res}     97,299
+{txt}25%    {res}     4950              0       {txt}Sum of wgt. {res}     97,299
+
+{txt}50%    {res}    10500                      {txt}Mean          {res}  14173.6
+                        {txt}Largest       Std. dev.     {res} 14885.05
+{txt}75%    {res}    18700         210300
+{txt}90%    {res}    28900         210300       {txt}Variance      {res} 2.22e+08
+{txt}95%    {res}    39400         210300       {txt}Skewness      {res} 3.716356
+{txt}99%    {res}    71400         223650       {txt}Kurtosis      {res}  29.0741
+{txt}
+{com}. 
+. sum ultimo_stipendio, d
+
+                   {txt}(mean) ultimo_stipendio
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res}      100              0
+{txt} 5%    {res}      750              0
+{txt}10%    {res}     1700              0       {txt}Obs         {res}     97,131
+{txt}25%    {res}     4640              0       {txt}Sum of wgt. {res}     97,131
+
+{txt}50%    {res}     9900                      {txt}Mean          {res} 13849.28
+                        {txt}Largest       Std. dev.     {res} 15010.77
+{txt}75%    {res}    18280         206500
+{txt}90%    {res} 28866.67         206975       {txt}Variance      {res} 2.25e+08
+{txt}95%    {res}    39400       208133.3       {txt}Skewness      {res} 3.745321
+{txt}99%    {res}    71440         209100       {txt}Kurtosis      {res} 28.78747
+{txt}
+{com}. 
+. sum RGDP_adj_income_nuovo_lavoro, d
+
+             {txt}(mean) RGDP_adj_income_nuovo_lavoro
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res} 101.4195              0
+{txt} 5%    {res}  727.802              0
+{txt}10%    {res}   1793.4              0       {txt}Obs         {res}     97,299
+{txt}25%    {res} 4964.093              0       {txt}Sum of wgt. {res}     97,299
+
+{txt}50%    {res} 10509.47                      {txt}Mean          {res} 14177.52
+                        {txt}Largest       Std. dev.     {res} 14910.47
+{txt}75%    {res} 18614.03       214701.6
+{txt}90%    {res} 28972.26       215622.7       {txt}Variance      {res} 2.22e+08
+{txt}95%    {res}  39456.2       215725.8       {txt}Skewness      {res} 3.732902
+{txt}99%    {res} 71386.78       223738.5       {txt}Kurtosis      {res}  29.3741
+{txt}
+{com}. 
+. twoway hist RGDP_adj_income_nuovo_lavoro if income_nuovo_lavoro <= 60000, bin(500) percent
+{res}{txt}
+{com}. 
+. graph export hist_RGDP_adj_income_nuovo_lavoro.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+hist_RGDP_adj_income_nuovo_lavoro.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. sum RGDP_adj_ultimo_stipendio, d
+
+              {txt}(mean) RGDP_adj_ultimo_stipendio
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res} 100.7812              0
+{txt} 5%    {res} 756.7954              0
+{txt}10%    {res} 1701.529              0       {txt}Obs         {res}     97,131
+{txt}25%    {res} 4643.957              0       {txt}Sum of wgt. {res}     97,131
+
+{txt}50%    {res} 9904.199                      {txt}Mean          {res}  13845.5
+                        {txt}Largest       Std. dev.     {res}  15035.6
+{txt}75%    {res} 18152.19       213043.5
+{txt}90%    {res} 28887.25       213043.5       {txt}Variance      {res} 2.26e+08
+{txt}95%    {res} 39416.47       214701.6       {txt}Skewness      {res} 3.754746
+{txt}99%    {res} 71386.57       215725.8       {txt}Kurtosis      {res} 28.94968
+{txt}
+{com}. 
+. sum RGDP_adj_income, d
+
+                   {txt}(mean) RGDP_adj_income
+{hline 61}
+      Percentiles      Smallest
+ 1%    {res} 99.01079              0
+{txt} 5%    {res} 716.2843              0
+{txt}10%    {res} 1973.001              0       {txt}Obs         {res}    164,999
+{txt}25%    {res} 6894.942              0       {txt}Sum of wgt. {res}    164,999
+
+{txt}50%    {res} 14144.15                      {txt}Mean          {res} 16813.54
+                        {txt}Largest       Std. dev.     {res} 15646.16
+{txt}75%    {res}  22053.7       205766.6
+{txt}90%    {res} 32267.55         212174       {txt}Variance      {res} 2.45e+08
+{txt}95%    {res} 42240.81       213050.2       {txt}Skewness      {res} 3.339139
+{txt}99%    {res} 76091.46       213154.1       {txt}Kurtosis      {res} 24.87207
+{txt}
+{com}. 
+. twoway hist RGDP_adj_income if RGDP_adj_income <= 60000, bin(500) percent
+{res}{txt}
+{com}. 
+. graph export hist_RGDP_adj_income.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+hist_RGDP_adj_income.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. restore
+{txt}
+{com}. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // In the following part of the code we will analyze the final regressions we use. To make the code not too long and difficult to read, we will omit all regressions we did not chose but that were fundamental to reach the ones we end up using. For this reason, we decided to include the section "Setting up the models" in the research paper in order to explain why we decided to use certain variables and to pose certain constraints in the final regressions, to better expain certain choices we made
+. 
+. // ANALYSIS OF FIRST WAGE
+. 
+.  // It is important for our study to understand the components of the first wage. There is an issue: the first wage we have in this sample is not certain to be the first wage in a person's life. To account for this issue, we selected the people that are more likely to be first workers, which looking at other researches we identified as people under 30 years old. 
+. 
+. // We encode our qualitiative string variables in order to generate dummy variables in our OLS regression.
+. 
+. encode sesso, generate(Sesso) 
+{txt}
+{com}. 
+. encode age_group, generate(Age_group) 
+{txt}
+{com}. 
+. encode regione, generate(Regione)
+{txt}
+{com}. 
+. encode tipo_contratto, generate(Tipo_contratto)
+{txt}
+{com}. 
+. encode qualifica, generate(Qualifica)
+{txt}
+{com}. 
+. encode macro_region, gen(Macro_region)
+{txt}
+{com}. 
+. encode reduced_class_dim, gen(Reduced_class_dim)
+{txt}
+{com}. 
+. reg primo_stipendio i.Sesso i.Age_group i.Reduced_class_dim n_lavori i.Macro_region i.Tipo_contratto i.Qualifica i.anno if primo_stipendio >= 10000 & timemax >= 36 & age <= 30
+
+{txt}      Source {c |}       SS           df       MS      Number of obs   ={res}    16,372
+{txt}{hline 13}{c +}{hline 34}   F(25, 16346)    = {res}   286.78
+{txt}       Model {c |} {res} 1.5152e+11        25  6.0608e+09   {txt}Prob > F        ={res}    0.0000
+{txt}    Residual {c |} {res} 3.4546e+11    16,346    21134113   {txt}R-squared       ={res}    0.3049
+{txt}{hline 13}{c +}{hline 34}   Adj R-squared   ={res}    0.3038
+{txt}       Total {c |} {res} 4.9698e+11    16,371  30357218.3   {txt}Root MSE        =   {res} 4597.2
+
+{txt}{hline 18}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}  primo_stipendio{col 19}{c |} Coefficient{col 31}  Std. err.{col 43}      t{col 51}   P>|t|{col 59}     [95% con{col 72}f. interval]
+{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{space 12}Sesso {c |}
+{space 15}M  {c |}{col 19}{res}{space 2} 1870.777{col 31}{space 2} 80.08704{col 42}{space 1}   23.36{col 51}{space 3}0.000{col 59}{space 4} 1713.798{col 72}{space 3} 2027.757
+{txt}{space 17} {c |}
+{space 8}Age_group {c |}
+{space 11}25-34  {c |}{col 19}{res}{space 2} 1408.559{col 31}{space 2} 88.90801{col 42}{space 1}   15.84{col 51}{space 3}0.000{col 59}{space 4} 1234.289{col 72}{space 3} 1582.828
+{txt}{space 17} {c |}
+Reduced_class_dim {c |}
+{space 11}medie  {c |}{col 19}{res}{space 2}-946.3908{col 31}{space 2} 117.7925{col 42}{space 1}   -8.03{col 51}{space 3}0.000{col 59}{space 4}-1177.277{col 72}{space 3}-715.5047
+{txt}{space 11}micro  {c |}{col 19}{res}{space 2}-3142.151{col 31}{space 2} 105.6402{col 42}{space 1}  -29.74{col 51}{space 3}0.000{col 59}{space 4}-3349.217{col 72}{space 3}-2935.085
+{txt}{space 9}piccole  {c |}{col 19}{res}{space 2}-1969.506{col 31}{space 2} 110.0986{col 42}{space 1}  -17.89{col 51}{space 3}0.000{col 59}{space 4}-2185.311{col 72}{space 3}  -1753.7
+{txt}{space 5}sconosciuta  {c |}{col 19}{res}{space 2} 3542.554{col 31}{space 2}    683.4{col 42}{space 1}    5.18{col 51}{space 3}0.000{col 59}{space 4} 2203.016{col 72}{space 3} 4882.093
+{txt}{space 17} {c |}
+{space 9}n_lavori {c |}{col 19}{res}{space 2}-216.1855{col 31}{space 2} 10.97836{col 42}{space 1}  -19.69{col 51}{space 3}0.000{col 59}{space 4}-237.7042{col 72}{space 3}-194.6667
+{txt}{space 17} {c |}
+{space 5}Macro_region {c |}
+{space 6}North-east  {c |}{col 19}{res}{space 2} 577.8113{col 31}{space 2}  109.456{col 42}{space 1}    5.28{col 51}{space 3}0.000{col 59}{space 4} 363.2656{col 72}{space 3}  792.357
+{txt}{space 6}North-west  {c |}{col 19}{res}{space 2} 443.7931{col 31}{space 2} 103.1744{col 42}{space 1}    4.30{col 51}{space 3}0.000{col 59}{space 4}   241.56{col 72}{space 3} 646.0263
+{txt}{space 11}South  {c |}{col 19}{res}{space 2}-936.6281{col 31}{space 2} 116.0634{col 42}{space 1}   -8.07{col 51}{space 3}0.000{col 59}{space 4}-1164.125{col 72}{space 3}-709.1313
+{txt}{space 17} {c |}
+{space 3}Tipo_contratto {c |}
+{space 12}temp  {c |}{col 19}{res}{space 2}-2076.998{col 31}{space 2} 102.8436{col 42}{space 1}  -20.20{col 51}{space 3}0.000{col 59}{space 4}-2278.582{col 72}{space 3}-1875.413
+{txt}{space 17} {c |}
+{space 8}Qualifica {c |}
+{space 5}apprendista  {c |}{col 19}{res}{space 2}-3356.037{col 31}{space 2} 909.7411{col 42}{space 1}   -3.69{col 51}{space 3}0.000{col 59}{space 4}-5139.229{col 72}{space 3}-1572.846
+{txt}{space 7}dirigente  {c |}{col 19}{res}{space 2} 12567.36{col 31}{space 2} 3374.744{col 42}{space 1}    3.72{col 51}{space 3}0.000{col 59}{space 4} 5952.494{col 72}{space 3} 19182.23
+{txt}{space 7}impiegato  {c |}{col 19}{res}{space 2} 1002.117{col 31}{space 2} 904.4365{col 42}{space 1}    1.11{col 51}{space 3}0.268{col 59}{space 4}-770.6771{col 72}{space 3} 2774.911
+{txt}{space 9}operaio  {c |}{col 19}{res}{space 2}-1769.058{col 31}{space 2} 905.1977{col 42}{space 1}   -1.95{col 51}{space 3}0.051{col 59}{space 4}-3543.344{col 72}{space 3} 5.228473
+{txt}{space 10}quadro  {c |}{col 19}{res}{space 2} 19035.18{col 31}{space 2} 1289.878{col 42}{space 1}   14.76{col 51}{space 3}0.000{col 59}{space 4} 16506.88{col 72}{space 3} 21563.49
+{txt}{space 17} {c |}
+{space 13}anno {c |}
+{space 12}2006  {c |}{col 19}{res}{space 2} -2380.44{col 31}{space 2} 191.2573{col 42}{space 1}  -12.45{col 51}{space 3}0.000{col 59}{space 4}-2755.325{col 72}{space 3}-2005.554
+{txt}{space 12}2007  {c |}{col 19}{res}{space 2}-2379.933{col 31}{space 2} 182.0665{col 42}{space 1}  -13.07{col 51}{space 3}0.000{col 59}{space 4}-2736.803{col 72}{space 3}-2023.063
+{txt}{space 12}2008  {c |}{col 19}{res}{space 2}-1980.561{col 31}{space 2}  201.756{col 42}{space 1}   -9.82{col 51}{space 3}0.000{col 59}{space 4}-2376.025{col 72}{space 3}-1585.098
+{txt}{space 12}2009  {c |}{col 19}{res}{space 2}-1765.724{col 31}{space 2} 269.1446{col 42}{space 1}   -6.56{col 51}{space 3}0.000{col 59}{space 4}-2293.277{col 72}{space 3}-1238.172
+{txt}{space 12}2010  {c |}{col 19}{res}{space 2}-1810.321{col 31}{space 2} 264.3053{col 42}{space 1}   -6.85{col 51}{space 3}0.000{col 59}{space 4}-2328.388{col 72}{space 3}-1292.254
+{txt}{space 12}2011  {c |}{col 19}{res}{space 2}-1854.253{col 31}{space 2} 244.5207{col 42}{space 1}   -7.58{col 51}{space 3}0.000{col 59}{space 4} -2333.54{col 72}{space 3}-1374.966
+{txt}{space 12}2012  {c |}{col 19}{res}{space 2}-2117.405{col 31}{space 2} 256.3451{col 42}{space 1}   -8.26{col 51}{space 3}0.000{col 59}{space 4} -2619.87{col 72}{space 3}-1614.941
+{txt}{space 12}2013  {c |}{col 19}{res}{space 2}-813.0815{col 31}{space 2} 284.9203{col 42}{space 1}   -2.85{col 51}{space 3}0.004{col 59}{space 4}-1371.556{col 72}{space 3}-254.6067
+{txt}{space 12}2014  {c |}{col 19}{res}{space 2}-110.9295{col 31}{space 2} 475.6719{col 42}{space 1}   -0.23{col 51}{space 3}0.816{col 59}{space 4}-1043.298{col 72}{space 3} 821.4394
+{txt}{space 17} {c |}
+{space 12}_cons {c |}{col 19}{res}{space 2} 19134.87{col 31}{space 2} 914.1312{col 42}{space 1}   20.93{col 51}{space 3}0.000{col 59}{space 4} 17343.07{col 72}{space 3} 20926.67
+{txt}{hline 18}{c BT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}{txt}
+{com}. 
+. eststo m1
+{txt}
+{com}. 
+. anova primo_stipendio i.Sesso i.Age_group i.Reduced_class_dim i.Macro_region i.Tipo_contratto i.Qualifica if primo_stipendio >= 10000 & timemax >= 36 & age <= 30
+
+                         {txt}Number of obs = {res}    16,372    {txt}R-squared     ={res}  0.2695
+                         {txt}Root MSE      =   {res} 4711.15    {txt}Adj R-squared ={res}  0.2689
+
+                  {txt}Source {c |} Partial SS         df         MS        F    Prob>F
+             {hline 12}{c +}{hline 52}
+                   Model {c |} {res} 1.340e+11         15   8.930e+09    402.36  0.0000
+                         {txt}{c |}
+                   Sesso {c |} {res} 1.017e+10          1   1.017e+10    458.15  0.0000
+{txt}               Age_group {c |} {res} 7.441e+09          1   7.441e+09    335.27  0.0000
+{txt}             Reduced_c~m {c |} {res} 2.454e+10          4   6.135e+09    276.41  0.0000
+{txt}             Macro_reg~n {c |} {res} 7.336e+09          3   2.445e+09    110.18  0.0000
+{txt}             Tipo_cont~o {c |} {res} 1.854e+10          1   1.854e+10    835.30  0.0000
+{txt}               Qualifica {c |} {res} 4.657e+10          5   9.314e+09    419.66  0.0000
+                         {txt}{c |}
+                Residual {c |} {res} 3.630e+11     16,356    22194973  
+             {txt}{hline 12}{c +}{hline 52}
+                   Total {c |} {res} 4.970e+11     16,371    30357218  
+{txt}
+{com}. 
+. eststo m2
+{txt}
+{com}. 
+. hetreg primo_stipendio i.Sesso i.Age_group i.Reduced_class_dim n_lavori i.Macro_region i.Tipo_contratto i.Qualifica if primo_stipendio >= 10000 & timemax >= 36 & age <= 30
+
+{txt}Fitting full model:
+{res}
+{txt}Iteration 0:{space 3}log likelihood = {res: -162168.9}  
+Iteration 1:{space 3}log likelihood = {res:-161531.34}  
+Iteration 2:{space 3}log likelihood = {res: -161529.3}  
+Iteration 3:{space 3}log likelihood = {res: -161529.3}  
+{res}
+{txt}Heteroskedastic linear regression{col 49}Number of obs     ={res}{col 69}    16,372
+{txt}ML estimation
+{col 49}Wald chi2({res}16{txt}){col 67}={res}{col 70}  6491.67
+{txt}Log likelihood = {res}-161529.3{txt}{col 49}Prob > chi2{col 67}={res}{col 70}   0.0000
+
+{txt}{hline 18}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}  primo_stipendio{col 19}{c |} Coefficient{col 31}  Std. err.{col 43}      z{col 51}   P>|z|{col 59}     [95% con{col 72}f. interval]
+{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}primo_stipendio   {txt}{c |}
+{space 12}Sesso {c |}
+{space 15}M  {c |}{col 19}{res}{space 2} 1807.714{col 31}{space 2}  81.1482{col 42}{space 1}   22.28{col 51}{space 3}0.000{col 59}{space 4} 1648.666{col 72}{space 3} 1966.761
+{txt}{space 17} {c |}
+{space 8}Age_group {c |}
+{space 11}25-34  {c |}{col 19}{res}{space 2} 1579.739{col 31}{space 2} 89.62628{col 42}{space 1}   17.63{col 51}{space 3}0.000{col 59}{space 4} 1404.074{col 72}{space 3} 1755.403
+{txt}{space 17} {c |}
+Reduced_class_dim {c |}
+{space 11}medie  {c |}{col 19}{res}{space 2} -934.452{col 31}{space 2} 119.4344{col 42}{space 1}   -7.82{col 51}{space 3}0.000{col 59}{space 4}-1168.539{col 72}{space 3}-700.3649
+{txt}{space 11}micro  {c |}{col 19}{res}{space 2}-3187.142{col 31}{space 2} 107.0838{col 42}{space 1}  -29.76{col 51}{space 3}0.000{col 59}{space 4}-3397.022{col 72}{space 3}-2977.262
+{txt}{space 9}piccole  {c |}{col 19}{res}{space 2}-1959.863{col 31}{space 2} 111.6387{col 42}{space 1}  -17.56{col 51}{space 3}0.000{col 59}{space 4}-2178.671{col 72}{space 3}-1741.055
+{txt}{space 5}sconosciuta  {c |}{col 19}{res}{space 2} 3485.574{col 31}{space 2} 692.9262{col 42}{space 1}    5.03{col 51}{space 3}0.000{col 59}{space 4} 2127.464{col 72}{space 3} 4843.685
+{txt}{space 17} {c |}
+{space 9}n_lavori {c |}{col 19}{res}{space 2}-199.8652{col 31}{space 2}  11.0202{col 42}{space 1}  -18.14{col 51}{space 3}0.000{col 59}{space 4}-221.4644{col 72}{space 3} -178.266
+{txt}{space 17} {c |}
+{space 5}Macro_region {c |}
+{space 6}North-east  {c |}{col 19}{res}{space 2} 620.8556{col 31}{space 2} 110.9584{col 42}{space 1}    5.60{col 51}{space 3}0.000{col 59}{space 4} 403.3812{col 72}{space 3}   838.33
+{txt}{space 6}North-west  {c |}{col 19}{res}{space 2} 455.4475{col 31}{space 2} 104.6162{col 42}{space 1}    4.35{col 51}{space 3}0.000{col 59}{space 4} 250.4035{col 72}{space 3} 660.4916
+{txt}{space 11}South  {c |}{col 19}{res}{space 2}-1075.907{col 31}{space 2} 117.4723{col 42}{space 1}   -9.16{col 51}{space 3}0.000{col 59}{space 4}-1306.148{col 72}{space 3}-845.6652
+{txt}{space 17} {c |}
+{space 3}Tipo_contratto {c |}
+{space 12}temp  {c |}{col 19}{res}{space 2} -2646.61{col 31}{space 2} 100.3136{col 42}{space 1}  -26.38{col 51}{space 3}0.000{col 59}{space 4}-2843.221{col 72}{space 3}-2449.999
+{txt}{space 17} {c |}
+{space 8}Qualifica {c |}
+{space 5}apprendista  {c |}{col 19}{res}{space 2}-3553.215{col 31}{space 2} 922.3493{col 42}{space 1}   -3.85{col 51}{space 3}0.000{col 59}{space 4}-5360.986{col 72}{space 3}-1745.443
+{txt}{space 7}dirigente  {c |}{col 19}{res}{space 2} 13189.76{col 31}{space 2} 3422.287{col 42}{space 1}    3.85{col 51}{space 3}0.000{col 59}{space 4} 6482.205{col 72}{space 3} 19897.32
+{txt}{space 7}impiegato  {c |}{col 19}{res}{space 2} 981.4106{col 31}{space 2} 916.9816{col 42}{space 1}    1.07{col 51}{space 3}0.285{col 59}{space 4}-815.8403{col 72}{space 3} 2778.661
+{txt}{space 9}operaio  {c |}{col 19}{res}{space 2}-1647.413{col 31}{space 2} 917.7383{col 42}{space 1}   -1.80{col 51}{space 3}0.073{col 59}{space 4}-3446.147{col 72}{space 3} 151.3212
+{txt}{space 10}quadro  {c |}{col 19}{res}{space 2} 18551.35{col 31}{space 2} 1307.357{col 42}{space 1}   14.19{col 51}{space 3}0.000{col 59}{space 4} 15988.98{col 72}{space 3} 21113.73
+{txt}{space 17} {c |}
+{space 12}_cons {c |}{col 19}{res}{space 2}  18690.5{col 31}{space 2} 926.4663{col 42}{space 1}   20.17{col 51}{space 3}0.000{col 59}{space 4} 16874.66{col 72}{space 3} 20506.34
+{txt}{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}lnsigma2          {txt}{c |}
+{space 12}_cons {c |}{col 19}{res}{space 2} 16.89451{col 31}{space 2} .0110526{col 42}{space 1} 1528.56{col 51}{space 3}0.000{col 59}{space 4} 16.87284{col 72}{space 3} 16.91617
+{txt}{hline 18}{c BT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+
+{com}. 
+. eststo m3
+{txt}
+{com}. 
+. esttab using grafici_primo_stipendio.rtf, label title(REGRESSIONS OUTPUTS PRIMO STIPENDIO) mtitles(OLS ANOVA HETREG) cells(b(fmt(0)) p(fmt(2)) ci(par fmt(0))) stats(r2 df_r bic, fmt(3 0 1) label(R-sqr dfres BIC)) replace
+{res}{txt}{p 0 4 2}
+(file {bf}
+grafici_primo_stipendio.rtf{rm}
+not found)
+{p_end}
+{res}{txt}(output written to {browse  `"grafici_primo_stipendio.rtf"'})
+
+{com}. 
+. eststo clear
+{txt}
+{com}. 
+. quietly reg primo_stipendio i.Sesso i.Age_group i.Reduced_class_dim n_lavori i.Macro_region i.Tipo_contratto i.Qualifica if primo_stipendio >= 10000 & timemax >= 36 & age <= 30
+{txt}
+{com}. 
+. estat vif
+
+{txt}    Variable {c |}       VIF       1/VIF  
+{hline 13}{c +}{hline 22}
+{space 5}2.Sesso {c |} {res}     1.15    0.866589
+{txt}{space 1}2.Age_group {c |} {res}     1.20    0.831436
+{txt}Reduced_cl~m {c |}
+{space 10}2  {c |} {res}     1.52    0.659115
+{txt}{space 10}3  {c |} {res}     1.98    0.505112
+{txt}{space 10}4  {c |} {res}     1.74    0.574465
+{txt}{space 10}5  {c |} {res}     1.01    0.986919
+{txt}{space 4}n_lavori {c |} {res}     1.06    0.947827
+{txt}Macro_region {c |}
+{space 10}2  {c |} {res}     1.78    0.562698
+{txt}{space 10}3  {c |} {res}     1.88    0.531787
+{txt}{space 10}4  {c |} {res}     1.68    0.595793
+{txt}2.Tipo_con~o {c |} {res}     1.22    0.818520
+{txt}{space 3}Qualifica {c |}
+{space 10}2  {c |} {res}    93.80    0.010661
+{txt}{space 10}3  {c |} {res}     1.08    0.928071
+{txt}{space 10}4  {c |} {res}   145.49    0.006873
+{txt}{space 10}5  {c |} {res}   157.63    0.006344
+{txt}{space 10}6  {c |} {res}     1.96    0.509479
+{txt}{hline 13}{c +}{hline 22}
+    Mean VIF {c |} {res}    26.01
+{txt}
+{com}. 
+. estat hettest
+
+{txt}Breusch–Pagan/Cook–Weisberg test for heteroskedasticity 
+Assumption: Normal error terms
+{p 0 11 0}Variable:{space 1}{res:{txt:Fitted values of} {res:primo_stipendio}}{p_end}
+
+H0: Constant variance
+
+{ralign 11:chi2({res:1})} = {res}{ralign 7:3467.19}
+{txt}{ralign 11:Prob > chi2} = {res}{ralign 7:0.0000}
+{txt}
+{com}. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // ANALYSIS ON SALARY GROWTH (RGDP_adj_income_nuovo_lavoro)
+. 
+. reg RGDP_adj_income_nuovo_lavoro RGDP_adj_ultimo_stipendio i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica if income_nuovo_lavoro >= 10000 & n_lavori >= 2 & timemax >= 36
+
+{txt}      Source {c |}       SS           df       MS      Number of obs   ={res}   124,903
+{txt}{hline 13}{c +}{hline 34}   F(16, 124886)   = {res} 42993.38
+{txt}       Model {c |} {res} 2.3553e+13        16  1.4721e+12   {txt}Prob > F        ={res}    0.0000
+{txt}    Residual {c |} {res} 4.2761e+12   124,886  34239896.4   {txt}R-squared       ={res}    0.8463
+{txt}{hline 13}{c +}{hline 34}   Adj R-squared   ={res}    0.8463
+{txt}       Total {c |} {res} 2.7830e+13   124,902   222810718   {txt}Root MSE        =   {res} 5851.5
+
+{txt}{hline 26}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}RGDP_adj_income_nuovo_l~o{col 27}{c |} Coefficient{col 39}  Std. err.{col 51}      t{col 59}   P>|t|{col 67}     [95% con{col 80}f. interval]
+{hline 26}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+RGDP_adj_ultimo_stipendio {c |}{col 27}{res}{space 2}  .723955{col 39}{space 2} .0014876{col 50}{space 1}  486.68{col 59}{space 3}0.000{col 67}{space 4} .7210394{col 80}{space 3} .7268705
+{txt}{space 25} {c |}
+{space 20}Sesso {c |}
+{space 23}M  {c |}{col 27}{res}{space 2} 1440.669{col 39}{space 2} 39.36629{col 50}{space 1}   36.60{col 59}{space 3}0.000{col 67}{space 4} 1363.512{col 80}{space 3} 1517.826
+{txt}{space 25} {c |}
+{space 16}Age_group {c |}
+{space 19}25-34  {c |}{col 27}{res}{space 2} 163.9982{col 39}{space 2} 75.76411{col 50}{space 1}    2.16{col 59}{space 3}0.030{col 67}{space 4}  15.5018{col 80}{space 3} 312.4945
+{txt}{space 19}35-44  {c |}{col 27}{res}{space 2} 252.3947{col 39}{space 2} 77.75059{col 50}{space 1}    3.25{col 59}{space 3}0.001{col 67}{space 4} 100.0049{col 80}{space 3} 404.7845
+{txt}{space 19}45-54  {c |}{col 27}{res}{space 2} 494.7916{col 39}{space 2} 80.60712{col 50}{space 1}    6.14{col 59}{space 3}0.000{col 67}{space 4}  336.803{col 80}{space 3} 652.7802
+{txt}{space 19}55-64  {c |}{col 27}{res}{space 2}  433.582{col 39}{space 2}  92.2925{col 50}{space 1}    4.70{col 59}{space 3}0.000{col 67}{space 4} 252.6903{col 80}{space 3} 614.4738
+{txt}{space 25} {c |}
+{space 8}Reduced_class_dim {c |}
+{space 19}medie  {c |}{col 27}{res}{space 2}-457.9043{col 39}{space 2} 49.04504{col 50}{space 1}   -9.34{col 59}{space 3}0.000{col 67}{space 4}-554.0318{col 80}{space 3}-361.7769
+{txt}{space 19}micro  {c |}{col 27}{res}{space 2}-1401.423{col 39}{space 2} 45.81766{col 50}{space 1}  -30.59{col 59}{space 3}0.000{col 67}{space 4}-1491.224{col 80}{space 3}-1311.621
+{txt}{space 17}piccole  {c |}{col 27}{res}{space 2}-869.5929{col 39}{space 2} 47.50373{col 50}{space 1}  -18.31{col 59}{space 3}0.000{col 67}{space 4}-962.6994{col 80}{space 3}-776.4864
+{txt}{space 13}sconosciuta  {c |}{col 27}{res}{space 2} 1139.375{col 39}{space 2} 518.2823{col 50}{space 1}    2.20{col 59}{space 3}0.028{col 67}{space 4} 123.5501{col 80}{space 3} 2155.199
+{txt}{space 25} {c |}
+{space 11}Tipo_contratto {c |}
+{space 20}temp  {c |}{col 27}{res}{space 2}-971.1572{col 39}{space 2}  36.1024{col 50}{space 1}  -26.90{col 59}{space 3}0.000{col 67}{space 4}-1041.917{col 80}{space 3}-900.3971
+{txt}{space 25} {c |}
+{space 16}Qualifica {c |}
+{space 13}apprendista  {c |}{col 27}{res}{space 2}-3500.317{col 39}{space 2} 390.2157{col 50}{space 1}   -8.97{col 59}{space 3}0.000{col 67}{space 4}-4265.133{col 80}{space 3}-2735.501
+{txt}{space 15}dirigente  {c |}{col 27}{res}{space 2} 18956.06{col 39}{space 2} 434.4126{col 50}{space 1}   43.64{col 59}{space 3}0.000{col 67}{space 4} 18104.62{col 80}{space 3}  19807.5
+{txt}{space 15}impiegato  {c |}{col 27}{res}{space 2}-1624.047{col 39}{space 2} 378.9475{col 50}{space 1}   -4.29{col 59}{space 3}0.000{col 67}{space 4}-2366.778{col 80}{space 3}-881.3166
+{txt}{space 17}operaio  {c |}{col 27}{res}{space 2}-3954.414{col 39}{space 2} 379.0498{col 50}{space 1}  -10.43{col 59}{space 3}0.000{col 67}{space 4}-4697.345{col 80}{space 3}-3211.483
+{txt}{space 18}quadro  {c |}{col 27}{res}{space 2} 5883.188{col 39}{space 2}  394.085{col 50}{space 1}   14.93{col 59}{space 3}0.000{col 67}{space 4} 5110.788{col 80}{space 3} 6655.588
+{txt}{space 25} {c |}
+{space 20}_cons {c |}{col 27}{res}{space 2} 9844.907{col 39}{space 2} 387.2129{col 50}{space 1}   25.43{col 59}{space 3}0.000{col 67}{space 4} 9085.976{col 80}{space 3} 10603.84
+{txt}{hline 26}{c BT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}{txt}
+{com}. 
+. eststo m4
+{txt}
+{com}. 
+. anova RGDP_adj_income_nuovo_lavoro i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica i.anno if income_nuovo_lavoro >= 10000 & n_lavori >= 2 & timemax >= 36
+
+                         {txt}Number of obs = {res}   125,027    {txt}R-squared     ={res}  0.5605
+                         {txt}Root MSE      =   {res} 9893.73    {txt}Adj R-squared ={res}  0.5604
+
+                  {txt}Source {c |} Partial SS         df         MS        F    Prob>F
+             {hline 12}{c +}{hline 52}
+                   Model {c |} {res} 1.560e+13         26   6.001e+11   6130.39  0.0000
+                         {txt}{c |}
+                   Sesso {c |} {res} 6.260e+11          1   6.260e+11   6395.03  0.0000
+{txt}               Age_group {c |} {res} 3.133e+11          4   7.833e+10    800.19  0.0000
+{txt}             Reduced_c~m {c |} {res} 4.031e+11          4   1.008e+11   1029.61  0.0000
+{txt}             Tipo_cont~o {c |} {res} 4.734e+11          1   4.734e+11   4836.13  0.0000
+{txt}               Qualifica {c |} {res} 1.143e+13          5   2.286e+12  23358.79  0.0000
+{txt}                    anno {c |} {res} 1.552e+11         11   1.411e+10    144.15  0.0000
+                         {txt}{c |}
+                Residual {c |} {res} 1.224e+13    125,000    97885837  
+             {txt}{hline 12}{c +}{hline 52}
+                   Total {c |} {res} 2.784e+13    125,026   2.227e+08  
+{txt}
+{com}. 
+. eststo m5
+{txt}
+{com}. 
+. esttab using grafici_RGDP_adj_income_nuovo_lavoro.rtf, label title(REGRESSIONS RGDP INCOME NUOVO LAVORO) mtitles(OLS ANOVA) cells(b(fmt(0)) p(fmt(2)) ci(par fmt(0))) stats(r2 df_r bic, fmt(3 0 1) label(R-sqr dfres BIC)) replace
+{res}{txt}{p 0 4 2}
+(file {bf}
+grafici_RGDP_adj_income_nuovo_lavoro.rtf{rm}
+not found)
+{p_end}
+{res}{txt}(output written to {browse  `"grafici_RGDP_adj_income_nuovo_lavoro.rtf"'})
+
+{com}. 
+. eststo clear
+{txt}
+{com}. 
+. quietly reg RGDP_adj_income_nuovo_lavoro RGDP_adj_ultimo_stipendio i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica if income_nuovo_lavoro >= 10000 & n_lavori >= 2 & timemax >= 36
+{txt}
+{com}. 
+. predict res, residuals
+{txt}(14,110,455 missing values generated)
+
+{com}. 
+. predict fitted, xb
+{txt}(14,110,428 missing values generated)
+
+{com}. 
+. rvfplot, addplot(qfit res fitted)
+{res}{txt}
+{com}. 
+. graph export rvplot_RGDP_adj_income_nuovo_lavoro.pdf, replace
+{txt}{p 0 4 2}
+file {bf}
+rvplot_RGDP_adj_income_nuovo_lavoro.pdf{rm}
+saved as
+PDF
+format
+{p_end}
+
+{com}. 
+. drop res fitted
+{txt}
+{com}. 
+. estat vif
+
+{txt}    Variable {c |}       VIF       1/VIF  
+{hline 13}{c +}{hline 22}
+RGDP_adj_u~o {c |} {res}     2.05    0.488269
+{txt}{space 5}2.Sesso {c |} {res}     1.21    0.829680
+{txt}{space 3}Age_group {c |}
+{space 10}2  {c |} {res}     4.45    0.224619
+{txt}{space 10}3  {c |} {res}     4.80    0.208255
+{txt}{space 10}4  {c |} {res}     4.11    0.243122
+{txt}{space 10}5  {c |} {res}     2.48    0.403643
+{txt}Reduced_cl~m {c |}
+{space 10}2  {c |} {res}     1.40    0.715173
+{txt}{space 10}3  {c |} {res}     1.57    0.638844
+{txt}{space 10}4  {c |} {res}     1.47    0.681805
+{txt}{space 10}5  {c |} {res}     1.00    0.996862
+{txt}2.Tipo_con~o {c |} {res}     1.12    0.891457
+{txt}{space 3}Qualifica {c |}
+{space 10}2  {c |} {res}    19.86    0.050363
+{txt}{space 10}3  {c |} {res}     5.61    0.178305
+{txt}{space 10}4  {c |} {res}   115.39    0.008666
+{txt}{space 10}5  {c |} {res}   125.86    0.007945
+{txt}{space 10}6  {c |} {res}    14.25    0.070175
+{txt}{hline 13}{c +}{hline 22}
+    Mean VIF {c |} {res}    19.16
+{txt}
+{com}. 
+. estat hettest
+
+{txt}Breusch–Pagan/Cook–Weisberg test for heteroskedasticity 
+Assumption: Normal error terms
+{p 0 11 0}Variable:{space 1}{res:{txt:Fitted values of} {res:RGDP_adj_income_nuovo_lavoro}}{p_end}
+
+H0: Constant variance
+
+{ralign 11:chi2({res:1})} = {res}{ralign 9:196970.49}
+{txt}{ralign 11:Prob > chi2} = {res}{ralign 9:0.0000}
+{txt}
+{com}. 
+. 
+. 
+. ////////////////////////////////////////////////////////////////////////////////////////////
+> ////////////////////////////////////////////////////////////////////////////////////////////
+> 
+. // ANALYSIS ON SALARY GROWTH (income as polled, fixed effect with LSDV2 and LSDV3, random effects with GLS)
+. 
+. 
+. xtset id_lavoratore time
+{res}
+{col 1}{txt:Panel variable: }{res:id_lavoratore}{txt: (unbalanced)}
+{p 1 16 2}{txt:Time variable: }{res:time}{txt:, }{res:{bind:1}}{txt: to }{res:{bind:144}}{p_end}
+{txt}{col 10}Delta: {res}1 unit
+{txt}
+{com}. 
+. // POOLED REGRESSION
+. 
+. xi: reg RGDP_adj_income i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica if income >= 10000 & timemax >= 36
+{txt}i.Sesso{col 19}_ISesso_1-2{col 39}(naturally coded; _ISesso_1 omitted)
+i.Age_group{col 19}_IAge_group_1-5{col 39}(naturally coded; _IAge_group_1 omitted)
+i.Reduced_cla~m{col 19}_IReduced_c_1-5{col 39}(naturally coded; _IReduced_c_1 omitted)
+i.Tipo_contra~o{col 19}_ITipo_cont_1-2{col 39}(naturally coded; _ITipo_cont_1 omitted)
+i.Qualifica{col 19}_IQualifica_1-6{col 39}(naturally coded; _IQualifica_1 omitted)
+
+      Source {c |}       SS           df       MS      Number of obs   ={res} 9,824,592
+{txt}{hline 13}{c +}{hline 34}   F(15, 9824576)  > {res} 99999.00
+{txt}       Model {c |} {res} 1.7445e+15        15  1.1630e+14   {txt}Prob > F        ={res}    0.0000
+{txt}    Residual {c |} {res} 1.2016e+15 9,824,576   122301417   {txt}R-squared       ={res}    0.5921
+{txt}{hline 13}{c +}{hline 34}   Adj R-squared   ={res}    0.5921
+{txt}       Total {c |} {res} 2.9461e+15 9,824,591   299868069   {txt}Root MSE        =   {res}  11059
+
+{txt}{hline 14}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}RGDP_adj_in~e{col 15}{c |} Coefficient{col 27}  Std. err.{col 39}      t{col 47}   P>|t|{col 55}     [95% con{col 68}f. interval]
+{hline 14}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{space 4}_ISesso_2 {c |}{col 15}{res}{space 2} 7120.237{col 27}{space 2} 7.879101{col 38}{space 1}  903.69{col 47}{space 3}0.000{col 55}{space 4} 7104.795{col 68}{space 3}  7135.68
+{txt}_IAge_group_2 {c |}{col 15}{res}{space 2} 1941.374{col 27}{space 2} 22.33685{col 38}{space 1}   86.91{col 47}{space 3}0.000{col 55}{space 4} 1897.594{col 68}{space 3} 1985.153
+{txt}_IAge_group_3 {c |}{col 15}{res}{space 2} 4053.336{col 27}{space 2} 22.67357{col 38}{space 1}  178.77{col 47}{space 3}0.000{col 55}{space 4} 4008.896{col 68}{space 3} 4097.775
+{txt}_IAge_group_4 {c |}{col 15}{res}{space 2} 6231.377{col 27}{space 2} 22.86483{col 38}{space 1}  272.53{col 47}{space 3}0.000{col 55}{space 4} 6186.563{col 68}{space 3} 6276.191
+{txt}_IAge_group_5 {c |}{col 15}{res}{space 2} 7600.317{col 27}{space 2} 24.10214{col 38}{space 1}  315.34{col 47}{space 3}0.000{col 55}{space 4} 7553.078{col 68}{space 3} 7647.556
+{txt}_IReduced_c_2 {c |}{col 15}{res}{space 2}-851.1151{col 27}{space 2} 10.19675{col 38}{space 1}  -83.47{col 47}{space 3}0.000{col 55}{space 4}-871.1004{col 68}{space 3}-831.1299
+{txt}_IReduced_c_3 {c |}{col 15}{res}{space 2}-6022.486{col 27}{space 2} 9.867471{col 38}{space 1} -610.34{col 47}{space 3}0.000{col 55}{space 4}-6041.826{col 68}{space 3}-6003.146
+{txt}_IReduced_c_4 {c |}{col 15}{res}{space 2}-2925.976{col 27}{space 2} 10.01256{col 38}{space 1} -292.23{col 47}{space 3}0.000{col 55}{space 4}  -2945.6{col 68}{space 3}-2906.352
+{txt}_IReduced_c_5 {c |}{col 15}{res}{space 2}-4763.681{col 27}{space 2} 159.8664{col 38}{space 1}  -29.80{col 47}{space 3}0.000{col 55}{space 4}-5077.013{col 68}{space 3}-4450.349
+{txt}_ITipo_cont_2 {c |}{col 15}{res}{space 2}-6146.019{col 27}{space 2} 12.19475{col 38}{space 1} -503.99{col 47}{space 3}0.000{col 55}{space 4} -6169.92{col 68}{space 3}-6122.117
+{txt}_IQualifica_2 {c |}{col 15}{res}{space 2}-27343.55{col 27}{space 2} 80.99452{col 38}{space 1} -337.60{col 47}{space 3}0.000{col 55}{space 4}-27502.29{col 68}{space 3} -27184.8
+{txt}_IQualifica_3 {c |}{col 15}{res}{space 2} 60326.04{col 27}{space 2} 83.98576{col 38}{space 1}  718.29{col 47}{space 3}0.000{col 55}{space 4} 60161.43{col 68}{space 3} 60490.65
+{txt}_IQualifica_4 {c |}{col 15}{res}{space 2}-19245.48{col 27}{space 2} 77.71799{col 38}{space 1} -247.63{col 47}{space 3}0.000{col 55}{space 4} -19397.8{col 68}{space 3}-19093.15
+{txt}_IQualifica_5 {c |}{col 15}{res}{space 2}-28055.76{col 27}{space 2} 77.71543{col 38}{space 1} -361.01{col 47}{space 3}0.000{col 55}{space 4}-28208.08{col 68}{space 3}-27903.44
+{txt}_IQualifica_6 {c |}{col 15}{res}{space 2} 7009.734{col 27}{space 2} 79.55011{col 38}{space 1}   88.12{col 47}{space 3}0.000{col 55}{space 4} 6853.818{col 68}{space 3} 7165.649
+{txt}{space 8}_cons {c |}{col 15}{res}{space 2} 42391.56{col 27}{space 2} 80.86243{col 38}{space 1}  524.24{col 47}{space 3}0.000{col 55}{space 4} 42233.07{col 68}{space 3} 42550.05
+{txt}{hline 14}{c BT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}{txt}
+{com}. 
+. eststo pooled
+{txt}
+{com}. 
+. // PANEL DATA - FIXED EFFECT with LSDV2
+. 
+. // LSDV2 (least Square Dummy Variables)
+. 
+. xi: reg RGDP_adj_income i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica i.time if income >= 10000 & timemax >= 36
+{txt}i.Sesso{col 19}_ISesso_1-2{col 39}(naturally coded; _ISesso_1 omitted)
+i.Age_group{col 19}_IAge_group_1-5{col 39}(naturally coded; _IAge_group_1 omitted)
+i.Reduced_cla~m{col 19}_IReduced_c_1-5{col 39}(naturally coded; _IReduced_c_1 omitted)
+i.Tipo_contra~o{col 19}_ITipo_cont_1-2{col 39}(naturally coded; _ITipo_cont_1 omitted)
+i.Qualifica{col 19}_IQualifica_1-6{col 39}(naturally coded; _IQualifica_1 omitted)
+i.time{col 19}_Itime_1-144{col 39}(naturally coded; _Itime_1 omitted)
+
+      Source {c |}       SS           df       MS      Number of obs   ={res} 9,824,592
+{txt}{hline 13}{c +}{hline 34}   F(158, 9824433) = {res} 94877.87
+{txt}       Model {c |} {res} 1.7797e+15       158  1.1264e+13   {txt}Prob > F        ={res}    0.0000
+{txt}    Residual {c |} {res} 1.1664e+15 9,824,433   118721132   {txt}R-squared       ={res}    0.6041
+{txt}{hline 13}{c +}{hline 34}   Adj R-squared   ={res}    0.6041
+{txt}       Total {c |} {res} 2.9461e+15 9,824,591   299868069   {txt}Root MSE        =   {res}  10896
+
+{txt}{hline 14}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}RGDP_adj_in~e{col 15}{c |} Coefficient{col 27}  Std. err.{col 39}      t{col 47}   P>|t|{col 55}     [95% con{col 68}f. interval]
+{hline 14}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{space 4}_ISesso_2 {c |}{col 15}{res}{space 2} 7211.104{col 27}{space 2}   7.7649{col 38}{space 1}  928.68{col 47}{space 3}0.000{col 55}{space 4} 7195.885{col 68}{space 3} 7226.323
+{txt}_IAge_group_2 {c |}{col 15}{res}{space 2} 874.3929{col 27}{space 2} 22.12756{col 38}{space 1}   39.52{col 47}{space 3}0.000{col 55}{space 4} 831.0237{col 68}{space 3} 917.7621
+{txt}_IAge_group_3 {c |}{col 15}{res}{space 2} 2363.353{col 27}{space 2} 22.57414{col 38}{space 1}  104.69{col 47}{space 3}0.000{col 55}{space 4} 2319.109{col 68}{space 3} 2407.598
+{txt}_IAge_group_4 {c |}{col 15}{res}{space 2} 4222.881{col 27}{space 2} 22.84236{col 38}{space 1}  184.87{col 47}{space 3}0.000{col 55}{space 4} 4178.111{col 68}{space 3} 4267.652
+{txt}_IAge_group_5 {c |}{col 15}{res}{space 2} 5302.953{col 27}{space 2} 24.13124{col 38}{space 1}  219.75{col 47}{space 3}0.000{col 55}{space 4} 5255.656{col 68}{space 3} 5350.249
+{txt}_IReduced_c_2 {c |}{col 15}{res}{space 2}-845.1682{col 27}{space 2} 10.04645{col 38}{space 1}  -84.13{col 47}{space 3}0.000{col 55}{space 4}-864.8589{col 68}{space 3}-825.4776
+{txt}_IReduced_c_3 {c |}{col 15}{res}{space 2}-5954.488{col 27}{space 2} 9.722977{col 38}{space 1} -612.41{col 47}{space 3}0.000{col 55}{space 4}-5973.545{col 68}{space 3}-5935.431
+{txt}_IReduced_c_4 {c |}{col 15}{res}{space 2} -2884.99{col 27}{space 2} 9.865277{col 38}{space 1} -292.44{col 47}{space 3}0.000{col 55}{space 4}-2904.325{col 68}{space 3}-2865.654
+{txt}_IReduced_c_5 {c |}{col 15}{res}{space 2}-3166.483{col 27}{space 2} 157.5407{col 38}{space 1}  -20.10{col 47}{space 3}0.000{col 55}{space 4}-3475.257{col 68}{space 3}-2857.708
+{txt}_ITipo_cont_2 {c |}{col 15}{res}{space 2}-5717.265{col 27}{space 2} 12.04317{col 38}{space 1} -474.73{col 47}{space 3}0.000{col 55}{space 4} -5740.87{col 68}{space 3}-5693.661
+{txt}_IQualifica_2 {c |}{col 15}{res}{space 2}   -27095{col 27}{space 2} 79.80304{col 38}{space 1} -339.52{col 47}{space 3}0.000{col 55}{space 4}-27251.41{col 68}{space 3}-26938.59
+{txt}_IQualifica_3 {c |}{col 15}{res}{space 2}    60381{col 27}{space 2} 82.74765{col 38}{space 1}  729.70{col 47}{space 3}0.000{col 55}{space 4} 60218.82{col 68}{space 3} 60543.18
+{txt}_IQualifica_4 {c |}{col 15}{res}{space 2}-19336.96{col 27}{space 2} 76.57242{col 38}{space 1} -252.53{col 47}{space 3}0.000{col 55}{space 4}-19487.04{col 68}{space 3}-19186.88
+{txt}_IQualifica_5 {c |}{col 15}{res}{space 2}-28132.43{col 27}{space 2} 76.56984{col 38}{space 1} -367.41{col 47}{space 3}0.000{col 55}{space 4} -28282.5{col 68}{space 3}-27982.35
+{txt}_IQualifica_6 {c |}{col 15}{res}{space 2} 6900.875{col 27}{space 2} 78.37754{col 38}{space 1}   88.05{col 47}{space 3}0.000{col 55}{space 4} 6747.258{col 68}{space 3} 7054.492
+{txt}{space 5}_Itime_2 {c |}{col 15}{res}{space 2} 11.33247{col 27}{space 2} 57.10725{col 38}{space 1}    0.20{col 47}{space 3}0.843{col 55}{space 4}-100.5957{col 68}{space 3} 123.2606
+{txt}{space 5}_Itime_3 {c |}{col 15}{res}{space 2} 29.63294{col 27}{space 2} 56.83292{col 38}{space 1}    0.52{col 47}{space 3}0.602{col 55}{space 4}-81.75755{col 68}{space 3} 141.0234
+{txt}{space 5}_Itime_4 {c |}{col 15}{res}{space 2} 52.40676{col 27}{space 2} 56.50468{col 38}{space 1}    0.93{col 47}{space 3}0.354{col 55}{space 4} -58.3404{col 68}{space 3} 163.1539
+{txt}{space 5}_Itime_5 {c |}{col 15}{res}{space 2} 95.55314{col 27}{space 2} 56.20332{col 38}{space 1}    1.70{col 47}{space 3}0.089{col 55}{space 4}-14.60337{col 68}{space 3} 205.7096
+{txt}{space 5}_Itime_6 {c |}{col 15}{res}{space 2} 120.5163{col 27}{space 2} 56.08404{col 38}{space 1}    2.15{col 47}{space 3}0.032{col 55}{space 4} 10.59357{col 68}{space 3}  230.439
+{txt}{space 5}_Itime_7 {c |}{col 15}{res}{space 2} 165.1233{col 27}{space 2} 55.89247{col 38}{space 1}    2.95{col 47}{space 3}0.003{col 55}{space 4} 55.57602{col 68}{space 3} 274.6705
+{txt}{space 5}_Itime_8 {c |}{col 15}{res}{space 2} 233.4805{col 27}{space 2} 55.78212{col 38}{space 1}    4.19{col 47}{space 3}0.000{col 55}{space 4} 124.1495{col 68}{space 3} 342.8114
+{txt}{space 5}_Itime_9 {c |}{col 15}{res}{space 2} 296.4309{col 27}{space 2} 55.68008{col 38}{space 1}    5.32{col 47}{space 3}0.000{col 55}{space 4}    187.3{col 68}{space 3} 405.5619
+{txt}{space 4}_Itime_10 {c |}{col 15}{res}{space 2} 370.9496{col 27}{space 2} 55.64589{col 38}{space 1}    6.67{col 47}{space 3}0.000{col 55}{space 4} 261.8857{col 68}{space 3} 480.0136
+{txt}{space 4}_Itime_11 {c |}{col 15}{res}{space 2} 438.2189{col 27}{space 2}  55.6303{col 38}{space 1}    7.88{col 47}{space 3}0.000{col 55}{space 4} 329.1855{col 68}{space 3} 547.2523
+{txt}{space 4}_Itime_12 {c |}{col 15}{res}{space 2} 480.0617{col 27}{space 2} 55.62365{col 38}{space 1}    8.63{col 47}{space 3}0.000{col 55}{space 4} 371.0414{col 68}{space 3} 589.0821
+{txt}{space 4}_Itime_13 {c |}{col 15}{res}{space 2} 696.9677{col 27}{space 2} 55.38744{col 38}{space 1}   12.58{col 47}{space 3}0.000{col 55}{space 4} 588.4103{col 68}{space 3} 805.5251
+{txt}{space 4}_Itime_14 {c |}{col 15}{res}{space 2} 692.7113{col 27}{space 2} 55.34133{col 38}{space 1}   12.52{col 47}{space 3}0.000{col 55}{space 4} 584.2443{col 68}{space 3} 801.1783
+{txt}{space 4}_Itime_15 {c |}{col 15}{res}{space 2} 699.7879{col 27}{space 2} 55.30297{col 38}{space 1}   12.65{col 47}{space 3}0.000{col 55}{space 4} 591.3961{col 68}{space 3} 808.1797
+{txt}{space 4}_Itime_16 {c |}{col 15}{res}{space 2} 704.3512{col 27}{space 2} 55.26906{col 38}{space 1}   12.74{col 47}{space 3}0.000{col 55}{space 4} 596.0258{col 68}{space 3} 812.6765
+{txt}{space 4}_Itime_17 {c |}{col 15}{res}{space 2} 713.4824{col 27}{space 2} 55.24152{col 38}{space 1}   12.92{col 47}{space 3}0.000{col 55}{space 4}  605.211{col 68}{space 3} 821.7538
+{txt}{space 4}_Itime_18 {c |}{col 15}{res}{space 2} 720.8811{col 27}{space 2} 55.23502{col 38}{space 1}   13.05{col 47}{space 3}0.000{col 55}{space 4} 612.6224{col 68}{space 3} 829.1398
+{txt}{space 4}_Itime_19 {c |}{col 15}{res}{space 2} 740.4472{col 27}{space 2} 55.22745{col 38}{space 1}   13.41{col 47}{space 3}0.000{col 55}{space 4} 632.2033{col 68}{space 3}  848.691
+{txt}{space 4}_Itime_20 {c |}{col 15}{res}{space 2} 762.3014{col 27}{space 2} 55.23972{col 38}{space 1}   13.80{col 47}{space 3}0.000{col 55}{space 4} 654.0335{col 68}{space 3} 870.5693
+{txt}{space 4}_Itime_21 {c |}{col 15}{res}{space 2} 776.8473{col 27}{space 2} 55.22926{col 38}{space 1}   14.07{col 47}{space 3}0.000{col 55}{space 4} 668.5999{col 68}{space 3} 885.0947
+{txt}{space 4}_Itime_22 {c |}{col 15}{res}{space 2} 795.7519{col 27}{space 2} 55.24604{col 38}{space 1}   14.40{col 47}{space 3}0.000{col 55}{space 4} 687.4716{col 68}{space 3} 904.0321
+{txt}{space 4}_Itime_23 {c |}{col 15}{res}{space 2} 813.9671{col 27}{space 2} 55.24886{col 38}{space 1}   14.73{col 47}{space 3}0.000{col 55}{space 4} 705.6814{col 68}{space 3} 922.2529
+{txt}{space 4}_Itime_24 {c |}{col 15}{res}{space 2} 831.4706{col 27}{space 2} 55.26475{col 38}{space 1}   15.05{col 47}{space 3}0.000{col 55}{space 4} 723.1537{col 68}{space 3} 939.7875
+{txt}{space 4}_Itime_25 {c |}{col 15}{res}{space 2} 1012.312{col 27}{space 2} 55.24689{col 38}{space 1}   18.32{col 47}{space 3}0.000{col 55}{space 4} 904.0296{col 68}{space 3} 1120.593
+{txt}{space 4}_Itime_26 {c |}{col 15}{res}{space 2} 1010.038{col 27}{space 2} 55.19992{col 38}{space 1}   18.30{col 47}{space 3}0.000{col 55}{space 4} 901.8479{col 68}{space 3} 1118.228
+{txt}{space 4}_Itime_27 {c |}{col 15}{res}{space 2} 1013.173{col 27}{space 2} 55.15236{col 38}{space 1}   18.37{col 47}{space 3}0.000{col 55}{space 4} 905.0766{col 68}{space 3}  1121.27
+{txt}{space 4}_Itime_28 {c |}{col 15}{res}{space 2} 1020.372{col 27}{space 2} 55.12714{col 38}{space 1}   18.51{col 47}{space 3}0.000{col 55}{space 4} 912.3248{col 68}{space 3} 1128.419
+{txt}{space 4}_Itime_29 {c |}{col 15}{res}{space 2} 1028.693{col 27}{space 2} 55.10229{col 38}{space 1}   18.67{col 47}{space 3}0.000{col 55}{space 4} 920.6942{col 68}{space 3} 1136.691
+{txt}{space 4}_Itime_30 {c |}{col 15}{res}{space 2} 1034.426{col 27}{space 2} 55.09035{col 38}{space 1}   18.78{col 47}{space 3}0.000{col 55}{space 4} 926.4511{col 68}{space 3} 1142.401
+{txt}{space 4}_Itime_31 {c |}{col 15}{res}{space 2} 1053.988{col 27}{space 2} 55.09952{col 38}{space 1}   19.13{col 47}{space 3}0.000{col 55}{space 4} 945.9947{col 68}{space 3} 1161.981
+{txt}{space 4}_Itime_32 {c |}{col 15}{res}{space 2} 1071.078{col 27}{space 2} 55.10724{col 38}{space 1}   19.44{col 47}{space 3}0.000{col 55}{space 4} 963.0701{col 68}{space 3} 1179.086
+{txt}{space 4}_Itime_33 {c |}{col 15}{res}{space 2} 1077.078{col 27}{space 2} 55.09745{col 38}{space 1}   19.55{col 47}{space 3}0.000{col 55}{space 4}  969.089{col 68}{space 3} 1185.067
+{txt}{space 4}_Itime_34 {c |}{col 15}{res}{space 2} 1098.709{col 27}{space 2} 55.11777{col 38}{space 1}   19.93{col 47}{space 3}0.000{col 55}{space 4} 990.6804{col 68}{space 3} 1206.738
+{txt}{space 4}_Itime_35 {c |}{col 15}{res}{space 2} 1110.431{col 27}{space 2} 55.13323{col 38}{space 1}   20.14{col 47}{space 3}0.000{col 55}{space 4} 1002.372{col 68}{space 3}  1218.49
+{txt}{space 4}_Itime_36 {c |}{col 15}{res}{space 2} 1127.372{col 27}{space 2} 55.16313{col 38}{space 1}   20.44{col 47}{space 3}0.000{col 55}{space 4} 1019.254{col 68}{space 3}  1235.49
+{txt}{space 4}_Itime_37 {c |}{col 15}{res}{space 2} 1996.477{col 27}{space 2}  55.4354{col 38}{space 1}   36.01{col 47}{space 3}0.000{col 55}{space 4} 1887.826{col 68}{space 3} 2105.129
+{txt}{space 4}_Itime_38 {c |}{col 15}{res}{space 2} 2011.225{col 27}{space 2}  55.4316{col 38}{space 1}   36.28{col 47}{space 3}0.000{col 55}{space 4} 1902.581{col 68}{space 3} 2119.869
+{txt}{space 4}_Itime_39 {c |}{col 15}{res}{space 2} 2022.156{col 27}{space 2} 55.43265{col 38}{space 1}   36.48{col 47}{space 3}0.000{col 55}{space 4}  1913.51{col 68}{space 3} 2130.802
+{txt}{space 4}_Itime_40 {c |}{col 15}{res}{space 2} 2054.892{col 27}{space 2} 55.45042{col 38}{space 1}   37.06{col 47}{space 3}0.000{col 55}{space 4} 1946.211{col 68}{space 3} 2163.572
+{txt}{space 4}_Itime_41 {c |}{col 15}{res}{space 2} 2073.993{col 27}{space 2} 55.47421{col 38}{space 1}   37.39{col 47}{space 3}0.000{col 55}{space 4} 1965.266{col 68}{space 3} 2182.721
+{txt}{space 4}_Itime_42 {c |}{col 15}{res}{space 2} 2080.285{col 27}{space 2} 55.49242{col 38}{space 1}   37.49{col 47}{space 3}0.000{col 55}{space 4} 1971.522{col 68}{space 3} 2189.048
+{txt}{space 4}_Itime_43 {c |}{col 15}{res}{space 2} 2107.862{col 27}{space 2} 55.52851{col 38}{space 1}   37.96{col 47}{space 3}0.000{col 55}{space 4} 1999.028{col 68}{space 3} 2216.696
+{txt}{space 4}_Itime_44 {c |}{col 15}{res}{space 2} 2141.739{col 27}{space 2} 55.58753{col 38}{space 1}   38.53{col 47}{space 3}0.000{col 55}{space 4} 2032.789{col 68}{space 3} 2250.688
+{txt}{space 4}_Itime_45 {c |}{col 15}{res}{space 2} 2160.782{col 27}{space 2} 55.62267{col 38}{space 1}   38.85{col 47}{space 3}0.000{col 55}{space 4} 2051.763{col 68}{space 3}   2269.8
+{txt}{space 4}_Itime_46 {c |}{col 15}{res}{space 2} 2190.131{col 27}{space 2} 55.69261{col 38}{space 1}   39.33{col 47}{space 3}0.000{col 55}{space 4} 2080.976{col 68}{space 3} 2299.287
+{txt}{space 4}_Itime_47 {c |}{col 15}{res}{space 2}  2216.97{col 27}{space 2} 55.76931{col 38}{space 1}   39.75{col 47}{space 3}0.000{col 55}{space 4} 2107.664{col 68}{space 3} 2326.276
+{txt}{space 4}_Itime_48 {c |}{col 15}{res}{space 2} 2230.473{col 27}{space 2} 55.84817{col 38}{space 1}   39.94{col 47}{space 3}0.000{col 55}{space 4} 2121.012{col 68}{space 3} 2339.933
+{txt}{space 4}_Itime_49 {c |}{col 15}{res}{space 2} 3041.018{col 27}{space 2} 56.38764{col 38}{space 1}   53.93{col 47}{space 3}0.000{col 55}{space 4}   2930.5{col 68}{space 3} 3151.536
+{txt}{space 4}_Itime_50 {c |}{col 15}{res}{space 2} 3042.569{col 27}{space 2} 56.36757{col 38}{space 1}   53.98{col 47}{space 3}0.000{col 55}{space 4}  2932.09{col 68}{space 3} 3153.047
+{txt}{space 4}_Itime_51 {c |}{col 15}{res}{space 2} 3046.775{col 27}{space 2} 56.36776{col 38}{space 1}   54.05{col 47}{space 3}0.000{col 55}{space 4} 2936.296{col 68}{space 3} 3157.254
+{txt}{space 4}_Itime_52 {c |}{col 15}{res}{space 2} 3057.989{col 27}{space 2} 56.39422{col 38}{space 1}   54.23{col 47}{space 3}0.000{col 55}{space 4} 2947.458{col 68}{space 3} 3168.519
+{txt}{space 4}_Itime_53 {c |}{col 15}{res}{space 2} 3071.109{col 27}{space 2} 56.41651{col 38}{space 1}   54.44{col 47}{space 3}0.000{col 55}{space 4} 2960.535{col 68}{space 3} 3181.684
+{txt}{space 4}_Itime_54 {c |}{col 15}{res}{space 2} 3088.698{col 27}{space 2} 56.43263{col 38}{space 1}   54.73{col 47}{space 3}0.000{col 55}{space 4} 2978.092{col 68}{space 3} 3199.304
+{txt}{space 4}_Itime_55 {c |}{col 15}{res}{space 2} 3126.195{col 27}{space 2} 56.49258{col 38}{space 1}   55.34{col 47}{space 3}0.000{col 55}{space 4} 3015.472{col 68}{space 3} 3236.919
+{txt}{space 4}_Itime_56 {c |}{col 15}{res}{space 2} 3175.635{col 27}{space 2} 56.57036{col 38}{space 1}   56.14{col 47}{space 3}0.000{col 55}{space 4}  3064.76{col 68}{space 3} 3286.511
+{txt}{space 4}_Itime_57 {c |}{col 15}{res}{space 2}  3201.35{col 27}{space 2} 56.60726{col 38}{space 1}   56.55{col 47}{space 3}0.000{col 55}{space 4} 3090.402{col 68}{space 3} 3312.299
+{txt}{space 4}_Itime_58 {c |}{col 15}{res}{space 2} 3222.333{col 27}{space 2} 56.67359{col 38}{space 1}   56.86{col 47}{space 3}0.000{col 55}{space 4} 3111.255{col 68}{space 3} 3333.412
+{txt}{space 4}_Itime_59 {c |}{col 15}{res}{space 2} 3241.418{col 27}{space 2} 56.74369{col 38}{space 1}   57.12{col 47}{space 3}0.000{col 55}{space 4} 3130.202{col 68}{space 3} 3352.633
+{txt}{space 4}_Itime_60 {c |}{col 15}{res}{space 2} 3264.431{col 27}{space 2} 56.81706{col 38}{space 1}   57.46{col 47}{space 3}0.000{col 55}{space 4} 3153.071{col 68}{space 3}  3375.79
+{txt}{space 4}_Itime_61 {c |}{col 15}{res}{space 2} 3329.139{col 27}{space 2} 57.17066{col 38}{space 1}   58.23{col 47}{space 3}0.000{col 55}{space 4} 3217.087{col 68}{space 3} 3441.192
+{txt}{space 4}_Itime_62 {c |}{col 15}{res}{space 2} 3326.016{col 27}{space 2}  57.1339{col 38}{space 1}   58.21{col 47}{space 3}0.000{col 55}{space 4} 3214.035{col 68}{space 3} 3437.996
+{txt}{space 4}_Itime_63 {c |}{col 15}{res}{space 2} 3336.164{col 27}{space 2} 57.13139{col 38}{space 1}   58.39{col 47}{space 3}0.000{col 55}{space 4} 3224.188{col 68}{space 3} 3448.139
+{txt}{space 4}_Itime_64 {c |}{col 15}{res}{space 2} 3347.583{col 27}{space 2} 57.14475{col 38}{space 1}   58.58{col 47}{space 3}0.000{col 55}{space 4} 3235.581{col 68}{space 3} 3459.585
+{txt}{space 4}_Itime_65 {c |}{col 15}{res}{space 2} 3363.464{col 27}{space 2} 57.16228{col 38}{space 1}   58.84{col 47}{space 3}0.000{col 55}{space 4} 3251.428{col 68}{space 3}   3475.5
+{txt}{space 4}_Itime_66 {c |}{col 15}{res}{space 2} 3386.856{col 27}{space 2} 57.18363{col 38}{space 1}   59.23{col 47}{space 3}0.000{col 55}{space 4} 3274.779{col 68}{space 3} 3498.934
+{txt}{space 4}_Itime_67 {c |}{col 15}{res}{space 2} 3431.376{col 27}{space 2} 57.24923{col 38}{space 1}   59.94{col 47}{space 3}0.000{col 55}{space 4}  3319.17{col 68}{space 3} 3543.583
+{txt}{space 4}_Itime_68 {c |}{col 15}{res}{space 2} 3458.148{col 27}{space 2} 57.32967{col 38}{space 1}   60.32{col 47}{space 3}0.000{col 55}{space 4} 3345.784{col 68}{space 3} 3570.512
+{txt}{space 4}_Itime_69 {c |}{col 15}{res}{space 2} 3471.644{col 27}{space 2} 57.37512{col 38}{space 1}   60.51{col 47}{space 3}0.000{col 55}{space 4} 3359.191{col 68}{space 3} 3584.097
+{txt}{space 4}_Itime_70 {c |}{col 15}{res}{space 2} 3496.234{col 27}{space 2} 57.44814{col 38}{space 1}   60.86{col 47}{space 3}0.000{col 55}{space 4} 3383.638{col 68}{space 3}  3608.83
+{txt}{space 4}_Itime_71 {c |}{col 15}{res}{space 2} 3525.458{col 27}{space 2} 57.52025{col 38}{space 1}   61.29{col 47}{space 3}0.000{col 55}{space 4} 3412.721{col 68}{space 3} 3638.196
+{txt}{space 4}_Itime_72 {c |}{col 15}{res}{space 2} 3536.048{col 27}{space 2} 57.57812{col 38}{space 1}   61.41{col 47}{space 3}0.000{col 55}{space 4} 3423.197{col 68}{space 3} 3648.899
+{txt}{space 4}_Itime_73 {c |}{col 15}{res}{space 2} 3598.868{col 27}{space 2} 57.91958{col 38}{space 1}   62.14{col 47}{space 3}0.000{col 55}{space 4} 3485.347{col 68}{space 3} 3712.388
+{txt}{space 4}_Itime_74 {c |}{col 15}{res}{space 2} 3602.083{col 27}{space 2} 57.90573{col 38}{space 1}   62.21{col 47}{space 3}0.000{col 55}{space 4} 3488.589{col 68}{space 3} 3715.576
+{txt}{space 4}_Itime_75 {c |}{col 15}{res}{space 2} 3602.478{col 27}{space 2} 57.90725{col 38}{space 1}   62.21{col 47}{space 3}0.000{col 55}{space 4} 3488.982{col 68}{space 3} 3715.974
+{txt}{space 4}_Itime_76 {c |}{col 15}{res}{space 2} 3623.527{col 27}{space 2} 57.93876{col 38}{space 1}   62.54{col 47}{space 3}0.000{col 55}{space 4} 3509.969{col 68}{space 3} 3737.085
+{txt}{space 4}_Itime_77 {c |}{col 15}{res}{space 2} 3627.351{col 27}{space 2} 57.95182{col 38}{space 1}   62.59{col 47}{space 3}0.000{col 55}{space 4} 3513.767{col 68}{space 3} 3740.934
+{txt}{space 4}_Itime_78 {c |}{col 15}{res}{space 2} 3647.652{col 27}{space 2}  57.9742{col 38}{space 1}   62.92{col 47}{space 3}0.000{col 55}{space 4} 3534.025{col 68}{space 3}  3761.28
+{txt}{space 4}_Itime_79 {c |}{col 15}{res}{space 2}  3699.18{col 27}{space 2} 58.05732{col 38}{space 1}   63.72{col 47}{space 3}0.000{col 55}{space 4}  3585.39{col 68}{space 3}  3812.97
+{txt}{space 4}_Itime_80 {c |}{col 15}{res}{space 2} 3737.915{col 27}{space 2} 58.13946{col 38}{space 1}   64.29{col 47}{space 3}0.000{col 55}{space 4} 3623.963{col 68}{space 3} 3851.866
+{txt}{space 4}_Itime_81 {c |}{col 15}{res}{space 2} 3772.117{col 27}{space 2} 58.19452{col 38}{space 1}   64.82{col 47}{space 3}0.000{col 55}{space 4} 3658.058{col 68}{space 3} 3886.176
+{txt}{space 4}_Itime_82 {c |}{col 15}{res}{space 2} 3800.771{col 27}{space 2} 58.27768{col 38}{space 1}   65.22{col 47}{space 3}0.000{col 55}{space 4} 3686.549{col 68}{space 3} 3914.993
+{txt}{space 4}_Itime_83 {c |}{col 15}{res}{space 2} 3824.775{col 27}{space 2} 58.35154{col 38}{space 1}   65.55{col 47}{space 3}0.000{col 55}{space 4} 3710.408{col 68}{space 3} 3939.142
+{txt}{space 4}_Itime_84 {c |}{col 15}{res}{space 2} 3845.169{col 27}{space 2} 58.43762{col 38}{space 1}   65.80{col 47}{space 3}0.000{col 55}{space 4} 3730.633{col 68}{space 3} 3959.705
+{txt}{space 4}_Itime_85 {c |}{col 15}{res}{space 2} 4432.508{col 27}{space 2} 58.98433{col 38}{space 1}   75.15{col 47}{space 3}0.000{col 55}{space 4} 4316.901{col 68}{space 3} 4548.115
+{txt}{space 4}_Itime_86 {c |}{col 15}{res}{space 2} 4438.726{col 27}{space 2} 58.96891{col 38}{space 1}   75.27{col 47}{space 3}0.000{col 55}{space 4} 4323.149{col 68}{space 3} 4554.303
+{txt}{space 4}_Itime_87 {c |}{col 15}{res}{space 2} 4443.393{col 27}{space 2} 58.98585{col 38}{space 1}   75.33{col 47}{space 3}0.000{col 55}{space 4} 4327.783{col 68}{space 3} 4559.003
+{txt}{space 4}_Itime_88 {c |}{col 15}{res}{space 2} 4459.569{col 27}{space 2} 59.01523{col 38}{space 1}   75.57{col 47}{space 3}0.000{col 55}{space 4} 4343.901{col 68}{space 3} 4575.237
+{txt}{space 4}_Itime_89 {c |}{col 15}{res}{space 2}  4483.47{col 27}{space 2} 59.05307{col 38}{space 1}   75.92{col 47}{space 3}0.000{col 55}{space 4} 4367.728{col 68}{space 3} 4599.212
+{txt}{space 4}_Itime_90 {c |}{col 15}{res}{space 2} 4496.339{col 27}{space 2} 59.07222{col 38}{space 1}   76.12{col 47}{space 3}0.000{col 55}{space 4}  4380.56{col 68}{space 3} 4612.119
+{txt}{space 4}_Itime_91 {c |}{col 15}{res}{space 2} 4543.792{col 27}{space 2} 59.15389{col 38}{space 1}   76.81{col 47}{space 3}0.000{col 55}{space 4} 4427.852{col 68}{space 3} 4659.731
+{txt}{space 4}_Itime_92 {c |}{col 15}{res}{space 2} 4587.819{col 27}{space 2} 59.24854{col 38}{space 1}   77.43{col 47}{space 3}0.000{col 55}{space 4} 4471.694{col 68}{space 3} 4703.944
+{txt}{space 4}_Itime_93 {c |}{col 15}{res}{space 2} 4607.706{col 27}{space 2} 59.28774{col 38}{space 1}   77.72{col 47}{space 3}0.000{col 55}{space 4} 4491.504{col 68}{space 3} 4723.908
+{txt}{space 4}_Itime_94 {c |}{col 15}{res}{space 2}  4639.58{col 27}{space 2} 59.37361{col 38}{space 1}   78.14{col 47}{space 3}0.000{col 55}{space 4}  4523.21{col 68}{space 3} 4755.951
+{txt}{space 4}_Itime_95 {c |}{col 15}{res}{space 2} 4670.011{col 27}{space 2} 59.48062{col 38}{space 1}   78.51{col 47}{space 3}0.000{col 55}{space 4} 4553.431{col 68}{space 3} 4786.591
+{txt}{space 4}_Itime_96 {c |}{col 15}{res}{space 2} 4695.088{col 27}{space 2} 59.56625{col 38}{space 1}   78.82{col 47}{space 3}0.000{col 55}{space 4}  4578.34{col 68}{space 3} 4811.835
+{txt}{space 4}_Itime_97 {c |}{col 15}{res}{space 2} 5285.707{col 27}{space 2} 60.20695{col 38}{space 1}   87.79{col 47}{space 3}0.000{col 55}{space 4} 5167.704{col 68}{space 3} 5403.711
+{txt}{space 4}_Itime_98 {c |}{col 15}{res}{space 2} 5290.954{col 27}{space 2} 60.20844{col 38}{space 1}   87.88{col 47}{space 3}0.000{col 55}{space 4} 5172.948{col 68}{space 3} 5408.961
+{txt}{space 4}_Itime_99 {c |}{col 15}{res}{space 2} 5297.111{col 27}{space 2}  60.2157{col 38}{space 1}   87.97{col 47}{space 3}0.000{col 55}{space 4}  5179.09{col 68}{space 3} 5415.131
+{txt}{space 3}_Itime_100 {c |}{col 15}{res}{space 2} 5311.895{col 27}{space 2}   60.268{col 38}{space 1}   88.14{col 47}{space 3}0.000{col 55}{space 4} 5193.772{col 68}{space 3} 5430.018
+{txt}{space 3}_Itime_101 {c |}{col 15}{res}{space 2} 5324.764{col 27}{space 2}  60.3289{col 38}{space 1}   88.26{col 47}{space 3}0.000{col 55}{space 4} 5206.521{col 68}{space 3} 5443.006
+{txt}{space 3}_Itime_102 {c |}{col 15}{res}{space 2} 5332.122{col 27}{space 2} 60.36192{col 38}{space 1}   88.34{col 47}{space 3}0.000{col 55}{space 4} 5213.814{col 68}{space 3} 5450.429
+{txt}{space 3}_Itime_103 {c |}{col 15}{res}{space 2} 5375.856{col 27}{space 2} 60.45395{col 38}{space 1}   88.92{col 47}{space 3}0.000{col 55}{space 4} 5257.369{col 68}{space 3} 5494.344
+{txt}{space 3}_Itime_104 {c |}{col 15}{res}{space 2} 5417.511{col 27}{space 2}  60.5743{col 38}{space 1}   89.44{col 47}{space 3}0.000{col 55}{space 4} 5298.787{col 68}{space 3} 5536.234
+{txt}{space 3}_Itime_105 {c |}{col 15}{res}{space 2} 5442.855{col 27}{space 2} 60.64678{col 38}{space 1}   89.75{col 47}{space 3}0.000{col 55}{space 4} 5323.989{col 68}{space 3}  5561.72
+{txt}{space 3}_Itime_106 {c |}{col 15}{res}{space 2} 5465.482{col 27}{space 2} 60.75502{col 38}{space 1}   89.96{col 47}{space 3}0.000{col 55}{space 4} 5346.405{col 68}{space 3}  5584.56
+{txt}{space 3}_Itime_107 {c |}{col 15}{res}{space 2} 5487.379{col 27}{space 2} 60.86134{col 38}{space 1}   90.16{col 47}{space 3}0.000{col 55}{space 4} 5368.093{col 68}{space 3} 5606.665
+{txt}{space 3}_Itime_108 {c |}{col 15}{res}{space 2} 5508.874{col 27}{space 2} 60.97087{col 38}{space 1}   90.35{col 47}{space 3}0.000{col 55}{space 4} 5389.373{col 68}{space 3} 5628.375
+{txt}{space 3}_Itime_109 {c |}{col 15}{res}{space 2} 5577.549{col 27}{space 2} 61.44609{col 38}{space 1}   90.77{col 47}{space 3}0.000{col 55}{space 4} 5457.117{col 68}{space 3} 5697.981
+{txt}{space 3}_Itime_110 {c |}{col 15}{res}{space 2} 5586.655{col 27}{space 2} 61.45771{col 38}{space 1}   90.90{col 47}{space 3}0.000{col 55}{space 4}   5466.2{col 68}{space 3}  5707.11
+{txt}{space 3}_Itime_111 {c |}{col 15}{res}{space 2} 5590.754{col 27}{space 2} 61.49097{col 38}{space 1}   90.92{col 47}{space 3}0.000{col 55}{space 4} 5470.234{col 68}{space 3} 5711.274
+{txt}{space 3}_Itime_112 {c |}{col 15}{res}{space 2}  5607.35{col 27}{space 2} 61.56035{col 38}{space 1}   91.09{col 47}{space 3}0.000{col 55}{space 4} 5486.694{col 68}{space 3} 5728.006
+{txt}{space 3}_Itime_113 {c |}{col 15}{res}{space 2} 5627.748{col 27}{space 2} 61.64546{col 38}{space 1}   91.29{col 47}{space 3}0.000{col 55}{space 4} 5506.925{col 68}{space 3} 5748.571
+{txt}{space 3}_Itime_114 {c |}{col 15}{res}{space 2} 5648.243{col 27}{space 2} 61.69427{col 38}{space 1}   91.55{col 47}{space 3}0.000{col 55}{space 4} 5527.324{col 68}{space 3} 5769.161
+{txt}{space 3}_Itime_115 {c |}{col 15}{res}{space 2} 5696.944{col 27}{space 2} 61.85388{col 38}{space 1}   92.10{col 47}{space 3}0.000{col 55}{space 4} 5575.713{col 68}{space 3} 5818.176
+{txt}{space 3}_Itime_116 {c |}{col 15}{res}{space 2}  5741.24{col 27}{space 2} 62.01272{col 38}{space 1}   92.58{col 47}{space 3}0.000{col 55}{space 4} 5619.697{col 68}{space 3} 5862.783
+{txt}{space 3}_Itime_117 {c |}{col 15}{res}{space 2} 5778.287{col 27}{space 2} 62.13935{col 38}{space 1}   92.99{col 47}{space 3}0.000{col 55}{space 4} 5656.496{col 68}{space 3} 5900.078
+{txt}{space 3}_Itime_118 {c |}{col 15}{res}{space 2} 5818.165{col 27}{space 2}    62.26{col 38}{space 1}   93.45{col 47}{space 3}0.000{col 55}{space 4} 5696.137{col 68}{space 3} 5940.192
+{txt}{space 3}_Itime_119 {c |}{col 15}{res}{space 2} 5855.755{col 27}{space 2} 62.41315{col 38}{space 1}   93.82{col 47}{space 3}0.000{col 55}{space 4} 5733.427{col 68}{space 3} 5978.082
+{txt}{space 3}_Itime_120 {c |}{col 15}{res}{space 2} 5876.975{col 27}{space 2} 62.56643{col 38}{space 1}   93.93{col 47}{space 3}0.000{col 55}{space 4} 5754.347{col 68}{space 3} 5999.603
+{txt}{space 3}_Itime_121 {c |}{col 15}{res}{space 2} 5900.602{col 27}{space 2} 63.15828{col 38}{space 1}   93.43{col 47}{space 3}0.000{col 55}{space 4} 5776.814{col 68}{space 3}  6024.39
+{txt}{space 3}_Itime_122 {c |}{col 15}{res}{space 2} 5898.832{col 27}{space 2} 63.15404{col 38}{space 1}   93.40{col 47}{space 3}0.000{col 55}{space 4} 5775.052{col 68}{space 3} 6022.612
+{txt}{space 3}_Itime_123 {c |}{col 15}{res}{space 2} 5901.586{col 27}{space 2} 63.19991{col 38}{space 1}   93.38{col 47}{space 3}0.000{col 55}{space 4} 5777.717{col 68}{space 3} 6025.456
+{txt}{space 3}_Itime_124 {c |}{col 15}{res}{space 2} 5914.537{col 27}{space 2} 63.26995{col 38}{space 1}   93.48{col 47}{space 3}0.000{col 55}{space 4}  5790.53{col 68}{space 3} 6038.544
+{txt}{space 3}_Itime_125 {c |}{col 15}{res}{space 2} 5913.336{col 27}{space 2} 63.33501{col 38}{space 1}   93.37{col 47}{space 3}0.000{col 55}{space 4} 5789.201{col 68}{space 3}  6037.47
+{txt}{space 3}_Itime_126 {c |}{col 15}{res}{space 2} 5916.446{col 27}{space 2} 63.37756{col 38}{space 1}   93.35{col 47}{space 3}0.000{col 55}{space 4} 5792.228{col 68}{space 3} 6040.663
+{txt}{space 3}_Itime_127 {c |}{col 15}{res}{space 2} 5983.781{col 27}{space 2}  63.5387{col 38}{space 1}   94.18{col 47}{space 3}0.000{col 55}{space 4} 5859.247{col 68}{space 3} 6108.314
+{txt}{space 3}_Itime_128 {c |}{col 15}{res}{space 2}  6035.17{col 27}{space 2}  63.7289{col 38}{space 1}   94.70{col 47}{space 3}0.000{col 55}{space 4} 5910.264{col 68}{space 3} 6160.077
+{txt}{space 3}_Itime_129 {c |}{col 15}{res}{space 2} 6063.195{col 27}{space 2} 63.85701{col 38}{space 1}   94.95{col 47}{space 3}0.000{col 55}{space 4} 5938.037{col 68}{space 3} 6188.352
+{txt}{space 3}_Itime_130 {c |}{col 15}{res}{space 2}  6100.56{col 27}{space 2} 63.98542{col 38}{space 1}   95.34{col 47}{space 3}0.000{col 55}{space 4} 5975.151{col 68}{space 3} 6225.969
+{txt}{space 3}_Itime_131 {c |}{col 15}{res}{space 2} 6120.016{col 27}{space 2} 64.15256{col 38}{space 1}   95.40{col 47}{space 3}0.000{col 55}{space 4}  5994.28{col 68}{space 3} 6245.753
+{txt}{space 3}_Itime_132 {c |}{col 15}{res}{space 2} 6134.807{col 27}{space 2} 64.29778{col 38}{space 1}   95.41{col 47}{space 3}0.000{col 55}{space 4} 6008.785{col 68}{space 3} 6260.828
+{txt}{space 3}_Itime_133 {c |}{col 15}{res}{space 2} 5799.757{col 27}{space 2} 64.60661{col 38}{space 1}   89.77{col 47}{space 3}0.000{col 55}{space 4}  5673.13{col 68}{space 3} 5926.384
+{txt}{space 3}_Itime_134 {c |}{col 15}{res}{space 2} 5806.463{col 27}{space 2} 64.63378{col 38}{space 1}   89.84{col 47}{space 3}0.000{col 55}{space 4} 5679.783{col 68}{space 3} 5933.143
+{txt}{space 3}_Itime_135 {c |}{col 15}{res}{space 2} 5809.133{col 27}{space 2} 64.70337{col 38}{space 1}   89.78{col 47}{space 3}0.000{col 55}{space 4} 5682.317{col 68}{space 3} 5935.949
+{txt}{space 3}_Itime_136 {c |}{col 15}{res}{space 2} 5828.355{col 27}{space 2} 64.81097{col 38}{space 1}   89.93{col 47}{space 3}0.000{col 55}{space 4} 5701.328{col 68}{space 3} 5955.383
+{txt}{space 3}_Itime_137 {c |}{col 15}{res}{space 2} 5846.586{col 27}{space 2} 64.92759{col 38}{space 1}   90.05{col 47}{space 3}0.000{col 55}{space 4}  5719.33{col 68}{space 3} 5973.842
+{txt}{space 3}_Itime_138 {c |}{col 15}{res}{space 2} 5876.389{col 27}{space 2} 65.03052{col 38}{space 1}   90.36{col 47}{space 3}0.000{col 55}{space 4} 5748.931{col 68}{space 3} 6003.846
+{txt}{space 3}_Itime_139 {c |}{col 15}{res}{space 2} 5959.523{col 27}{space 2}  65.3057{col 38}{space 1}   91.26{col 47}{space 3}0.000{col 55}{space 4} 5831.526{col 68}{space 3}  6087.52
+{txt}{space 3}_Itime_140 {c |}{col 15}{res}{space 2} 6028.097{col 27}{space 2} 65.59325{col 38}{space 1}   91.90{col 47}{space 3}0.000{col 55}{space 4} 5899.536{col 68}{space 3} 6156.657
+{txt}{space 3}_Itime_141 {c |}{col 15}{res}{space 2} 6096.546{col 27}{space 2} 65.81471{col 38}{space 1}   92.63{col 47}{space 3}0.000{col 55}{space 4} 5967.551{col 68}{space 3}  6225.54
+{txt}{space 3}_Itime_142 {c |}{col 15}{res}{space 2} 6148.062{col 27}{space 2} 66.06667{col 38}{space 1}   93.06{col 47}{space 3}0.000{col 55}{space 4} 6018.574{col 68}{space 3}  6277.55
+{txt}{space 3}_Itime_143 {c |}{col 15}{res}{space 2} 6191.192{col 27}{space 2} 66.32031{col 38}{space 1}   93.35{col 47}{space 3}0.000{col 55}{space 4} 6061.206{col 68}{space 3} 6321.177
+{txt}{space 3}_Itime_144 {c |}{col 15}{res}{space 2} 6242.869{col 27}{space 2} 66.61818{col 38}{space 1}   93.71{col 47}{space 3}0.000{col 55}{space 4}   6112.3{col 68}{space 3} 6373.438
+{txt}{space 8}_cons {c |}{col 15}{res}{space 2} 40862.83{col 27}{space 2} 89.22881{col 38}{space 1}  457.96{col 47}{space 3}0.000{col 55}{space 4} 40687.95{col 68}{space 3} 41037.72
+{txt}{hline 14}{c BT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{res}{txt}
+{com}. 
+. eststo LSDV2
+{txt}
+{com}. 
+. // Pooled vs lsdv2
+. 
+. // you test for the significance of the restrictions that lsdv has (i.time)
+. 
+. // F TEST: NULL —> FIXED EFFECTS = 0 
+. 
+. testparm _Itime_2 _Itime_3 _Itime_4 _Itime_5 _Itime_6 _Itime_7 _Itime_8 _Itime_9 _Itime_10 _Itime_11 _Itime_12 _Itime_13 _Itime_14 _Itime_15 _Itime_16 _Itime_17 _Itime_18 _Itime_19 _Itime_20 _Itime_21 _Itime_22 _Itime_23 _Itime_24 _Itime_25 _Itime_26 _Itime_27 _Itime_28 _Itime_29 _Itime_30 _Itime_31 _Itime_32 _Itime_33 _Itime_34 _Itime_35 _Itime_36 _Itime_37 _Itime_38 _Itime_39 _Itime_40 _Itime_41 _Itime_42 _Itime_43 _Itime_44 _Itime_45 _Itime_46 _Itime_47 _Itime_48 _Itime_49 _Itime_50 _Itime_51 _Itime_52 _Itime_53 _Itime_54 _Itime_55 _Itime_56 _Itime_57 _Itime_58 _Itime_59 _Itime_60 _Itime_61 _Itime_62 _Itime_63 _Itime_64 _Itime_65 _Itime_66 _Itime_67 _Itime_68 _Itime_69 _Itime_70 _Itime_71 _Itime_72 _Itime_73 _Itime_74 _Itime_75 _Itime_76 _Itime_77 _Itime_78 _Itime_79 _Itime_80 _Itime_81 _Itime_82 _Itime_83 _Itime_84 _Itime_85 _Itime_86 _Itime_87 _Itime_88 _Itime_89 _Itime_90 _Itime_91 _Itime_92 _Itime_93 _Itime_94 _Itime_95 _Itime_96 _Itime_97 _Itime_98 _Itime_99 _Itime_100 _Itime_101 _Itime_102 _Itime_103 _Itime_104 _Itime_105 _Itime_106 _Itime_107 _Itime_108 _Itime_109 _Itime_110 _Itime_111 _Itime_112 _Itime_113 _Itime_114 _Itime_115 _Itime_116 _Itime_117 _Itime_118 _Itime_119 _Itime_120 _Itime_121 _Itime_122 _Itime_123 _Itime_124 _Itime_125 _Itime_126 _Itime_127 _Itime_128 _Itime_129 _Itime_130 _Itime_131 _Itime_132 _Itime_133 _Itime_134 _Itime_135 _Itime_136 _Itime_137 _Itime_138 _Itime_139 _Itime_140 _Itime_141 _Itime_142 _Itime_143 _Itime_144
+
+{p 0 7}{space 1}{text:( 1)}{space 1} {res}_Itime_2 = 0{p_end}
+{p 0 7}{space 1}{text:( 2)}{space 1} _Itime_3 = 0{p_end}
+{p 0 7}{space 1}{text:( 3)}{space 1} _Itime_4 = 0{p_end}
+{p 0 7}{space 1}{text:( 4)}{space 1} _Itime_5 = 0{p_end}
+{p 0 7}{space 1}{text:( 5)}{space 1} _Itime_6 = 0{p_end}
+{p 0 7}{space 1}{text:( 6)}{space 1} _Itime_7 = 0{p_end}
+{p 0 7}{space 1}{text:( 7)}{space 1} _Itime_8 = 0{p_end}
+{p 0 7}{space 1}{text:( 8)}{space 1} _Itime_9 = 0{p_end}
+{p 0 7}{space 1}{text:( 9)}{space 1} _Itime_10 = 0{p_end}
+{p 0 7}{space 1}{text:(10)}{space 1} _Itime_11 = 0{p_end}
+{p 0 7}{space 1}{text:(11)}{space 1} _Itime_12 = 0{p_end}
+{p 0 7}{space 1}{text:(12)}{space 1} _Itime_13 = 0{p_end}
+{p 0 7}{space 1}{text:(13)}{space 1} _Itime_14 = 0{p_end}
+{p 0 7}{space 1}{text:(14)}{space 1} _Itime_15 = 0{p_end}
+{p 0 7}{space 1}{text:(15)}{space 1} _Itime_16 = 0{p_end}
+{p 0 7}{space 1}{text:(16)}{space 1} _Itime_17 = 0{p_end}
+{p 0 7}{space 1}{text:(17)}{space 1} _Itime_18 = 0{p_end}
+{p 0 7}{space 1}{text:(18)}{space 1} _Itime_19 = 0{p_end}
+{p 0 7}{space 1}{text:(19)}{space 1} _Itime_20 = 0{p_end}
+{p 0 7}{space 1}{text:(20)}{space 1} _Itime_21 = 0{p_end}
+{p 0 7}{space 1}{text:(21)}{space 1} _Itime_22 = 0{p_end}
+{p 0 7}{space 1}{text:(22)}{space 1} _Itime_23 = 0{p_end}
+{p 0 7}{space 1}{text:(23)}{space 1} _Itime_24 = 0{p_end}
+{p 0 7}{space 1}{text:(24)}{space 1} _Itime_25 = 0{p_end}
+{p 0 7}{space 1}{text:(25)}{space 1} _Itime_26 = 0{p_end}
+{p 0 7}{space 1}{text:(26)}{space 1} _Itime_27 = 0{p_end}
+{p 0 7}{space 1}{text:(27)}{space 1} _Itime_28 = 0{p_end}
+{p 0 7}{space 1}{text:(28)}{space 1} _Itime_29 = 0{p_end}
+{p 0 7}{space 1}{text:(29)}{space 1} _Itime_30 = 0{p_end}
+{p 0 7}{space 1}{text:(30)}{space 1} _Itime_31 = 0{p_end}
+{p 0 7}{space 1}{text:(31)}{space 1} _Itime_32 = 0{p_end}
+{p 0 7}{space 1}{text:(32)}{space 1} _Itime_33 = 0{p_end}
+{p 0 7}{space 1}{text:(33)}{space 1} _Itime_34 = 0{p_end}
+{p 0 7}{space 1}{text:(34)}{space 1} _Itime_35 = 0{p_end}
+{p 0 7}{space 1}{text:(35)}{space 1} _Itime_36 = 0{p_end}
+{p 0 7}{space 1}{text:(36)}{space 1} _Itime_37 = 0{p_end}
+{p 0 7}{space 1}{text:(37)}{space 1} _Itime_38 = 0{p_end}
+{p 0 7}{space 1}{text:(38)}{space 1} _Itime_39 = 0{p_end}
+{p 0 7}{space 1}{text:(39)}{space 1} _Itime_40 = 0{p_end}
+{p 0 7}{space 1}{text:(40)}{space 1} _Itime_41 = 0{p_end}
+{p 0 7}{space 1}{text:(41)}{space 1} _Itime_42 = 0{p_end}
+{p 0 7}{space 1}{text:(42)}{space 1} _Itime_43 = 0{p_end}
+{p 0 7}{space 1}{text:(43)}{space 1} _Itime_44 = 0{p_end}
+{p 0 7}{space 1}{text:(44)}{space 1} _Itime_45 = 0{p_end}
+{p 0 7}{space 1}{text:(45)}{space 1} _Itime_46 = 0{p_end}
+{p 0 7}{space 1}{text:(46)}{space 1} _Itime_47 = 0{p_end}
+{p 0 7}{space 1}{text:(47)}{space 1} _Itime_48 = 0{p_end}
+{p 0 7}{space 1}{text:(48)}{space 1} _Itime_49 = 0{p_end}
+{p 0 7}{space 1}{text:(49)}{space 1} _Itime_50 = 0{p_end}
+{p 0 7}{space 1}{text:(50)}{space 1} _Itime_51 = 0{p_end}
+{p 0 7}{space 1}{text:(51)}{space 1} _Itime_52 = 0{p_end}
+{p 0 7}{space 1}{text:(52)}{space 1} _Itime_53 = 0{p_end}
+{p 0 7}{space 1}{text:(53)}{space 1} _Itime_54 = 0{p_end}
+{p 0 7}{space 1}{text:(54)}{space 1} _Itime_55 = 0{p_end}
+{p 0 7}{space 1}{text:(55)}{space 1} _Itime_56 = 0{p_end}
+{p 0 7}{space 1}{text:(56)}{space 1} _Itime_57 = 0{p_end}
+{p 0 7}{space 1}{text:(57)}{space 1} _Itime_58 = 0{p_end}
+{p 0 7}{space 1}{text:(58)}{space 1} _Itime_59 = 0{p_end}
+{p 0 7}{space 1}{text:(59)}{space 1} _Itime_60 = 0{p_end}
+{p 0 7}{space 1}{text:(60)}{space 1} _Itime_61 = 0{p_end}
+{p 0 7}{space 1}{text:(61)}{space 1} _Itime_62 = 0{p_end}
+{p 0 7}{space 1}{text:(62)}{space 1} _Itime_63 = 0{p_end}
+{p 0 7}{space 1}{text:(63)}{space 1} _Itime_64 = 0{p_end}
+{p 0 7}{space 1}{text:(64)}{space 1} _Itime_65 = 0{p_end}
+{p 0 7}{space 1}{text:(65)}{space 1} _Itime_66 = 0{p_end}
+{p 0 7}{space 1}{text:(66)}{space 1} _Itime_67 = 0{p_end}
+{p 0 7}{space 1}{text:(67)}{space 1} _Itime_68 = 0{p_end}
+{p 0 7}{space 1}{text:(68)}{space 1} _Itime_69 = 0{p_end}
+{p 0 7}{space 1}{text:(69)}{space 1} _Itime_70 = 0{p_end}
+{p 0 7}{space 1}{text:(70)}{space 1} _Itime_71 = 0{p_end}
+{p 0 7}{space 1}{text:(71)}{space 1} _Itime_72 = 0{p_end}
+{p 0 7}{space 1}{text:(72)}{space 1} _Itime_73 = 0{p_end}
+{p 0 7}{space 1}{text:(73)}{space 1} _Itime_74 = 0{p_end}
+{p 0 7}{space 1}{text:(74)}{space 1} _Itime_75 = 0{p_end}
+{p 0 7}{space 1}{text:(75)}{space 1} _Itime_76 = 0{p_end}
+{p 0 7}{space 1}{text:(76)}{space 1} _Itime_77 = 0{p_end}
+{p 0 7}{space 1}{text:(77)}{space 1} _Itime_78 = 0{p_end}
+{p 0 7}{space 1}{text:(78)}{space 1} _Itime_79 = 0{p_end}
+{p 0 7}{space 1}{text:(79)}{space 1} _Itime_80 = 0{p_end}
+{p 0 7}{space 1}{text:(80)}{space 1} _Itime_81 = 0{p_end}
+{p 0 7}{space 1}{text:(81)}{space 1} _Itime_82 = 0{p_end}
+{p 0 7}{space 1}{text:(82)}{space 1} _Itime_83 = 0{p_end}
+{p 0 7}{space 1}{text:(83)}{space 1} _Itime_84 = 0{p_end}
+{p 0 7}{space 1}{text:(84)}{space 1} _Itime_85 = 0{p_end}
+{p 0 7}{space 1}{text:(85)}{space 1} _Itime_86 = 0{p_end}
+{p 0 7}{space 1}{text:(86)}{space 1} _Itime_87 = 0{p_end}
+{p 0 7}{space 1}{text:(87)}{space 1} _Itime_88 = 0{p_end}
+{p 0 7}{space 1}{text:(88)}{space 1} _Itime_89 = 0{p_end}
+{p 0 7}{space 1}{text:(89)}{space 1} _Itime_90 = 0{p_end}
+{p 0 7}{space 1}{text:(90)}{space 1} _Itime_91 = 0{p_end}
+{p 0 7}{space 1}{text:(91)}{space 1} _Itime_92 = 0{p_end}
+{p 0 7}{space 1}{text:(92)}{space 1} _Itime_93 = 0{p_end}
+{p 0 7}{space 1}{text:(93)}{space 1} _Itime_94 = 0{p_end}
+{p 0 7}{space 1}{text:(94)}{space 1} _Itime_95 = 0{p_end}
+{p 0 7}{space 1}{text:(95)}{space 1} _Itime_96 = 0{p_end}
+{p 0 7}{space 1}{text:(96)}{space 1} _Itime_97 = 0{p_end}
+{p 0 7}{space 1}{text:(97)}{space 1} _Itime_98 = 0{p_end}
+{p 0 7}{space 1}{text:(98)}{space 1} _Itime_99 = 0{p_end}
+{p 0 7}{space 1}{text:(99)}{space 1} _Itime_100 = 0{p_end}
+{p 0 7}{space 1}{text:(100)}{space 1} _Itime_101 = 0{p_end}
+{p 0 7}{space 1}{text:(101)}{space 1} _Itime_102 = 0{p_end}
+{p 0 7}{space 1}{text:(102)}{space 1} _Itime_103 = 0{p_end}
+{p 0 7}{space 1}{text:(103)}{space 1} _Itime_104 = 0{p_end}
+{p 0 7}{space 1}{text:(104)}{space 1} _Itime_105 = 0{p_end}
+{p 0 7}{space 1}{text:(105)}{space 1} _Itime_106 = 0{p_end}
+{p 0 7}{space 1}{text:(106)}{space 1} _Itime_107 = 0{p_end}
+{p 0 7}{space 1}{text:(107)}{space 1} _Itime_108 = 0{p_end}
+{p 0 7}{space 1}{text:(108)}{space 1} _Itime_109 = 0{p_end}
+{p 0 7}{space 1}{text:(109)}{space 1} _Itime_110 = 0{p_end}
+{p 0 7}{space 1}{text:(110)}{space 1} _Itime_111 = 0{p_end}
+{p 0 7}{space 1}{text:(111)}{space 1} _Itime_112 = 0{p_end}
+{p 0 7}{space 1}{text:(112)}{space 1} _Itime_113 = 0{p_end}
+{p 0 7}{space 1}{text:(113)}{space 1} _Itime_114 = 0{p_end}
+{p 0 7}{space 1}{text:(114)}{space 1} _Itime_115 = 0{p_end}
+{p 0 7}{space 1}{text:(115)}{space 1} _Itime_116 = 0{p_end}
+{p 0 7}{space 1}{text:(116)}{space 1} _Itime_117 = 0{p_end}
+{p 0 7}{space 1}{text:(117)}{space 1} _Itime_118 = 0{p_end}
+{p 0 7}{space 1}{text:(118)}{space 1} _Itime_119 = 0{p_end}
+{p 0 7}{space 1}{text:(119)}{space 1} _Itime_120 = 0{p_end}
+{p 0 7}{space 1}{text:(120)}{space 1} _Itime_121 = 0{p_end}
+{p 0 7}{space 1}{text:(121)}{space 1} _Itime_122 = 0{p_end}
+{p 0 7}{space 1}{text:(122)}{space 1} _Itime_123 = 0{p_end}
+{p 0 7}{space 1}{text:(123)}{space 1} _Itime_124 = 0{p_end}
+{p 0 7}{space 1}{text:(124)}{space 1} _Itime_125 = 0{p_end}
+{p 0 7}{space 1}{text:(125)}{space 1} _Itime_126 = 0{p_end}
+{p 0 7}{space 1}{text:(126)}{space 1} _Itime_127 = 0{p_end}
+{p 0 7}{space 1}{text:(127)}{space 1} _Itime_128 = 0{p_end}
+{p 0 7}{space 1}{text:(128)}{space 1} _Itime_129 = 0{p_end}
+{p 0 7}{space 1}{text:(129)}{space 1} _Itime_130 = 0{p_end}
+{p 0 7}{space 1}{text:(130)}{space 1} _Itime_131 = 0{p_end}
+{p 0 7}{space 1}{text:(131)}{space 1} _Itime_132 = 0{p_end}
+{p 0 7}{space 1}{text:(132)}{space 1} _Itime_133 = 0{p_end}
+{p 0 7}{space 1}{text:(133)}{space 1} _Itime_134 = 0{p_end}
+{p 0 7}{space 1}{text:(134)}{space 1} _Itime_135 = 0{p_end}
+{p 0 7}{space 1}{text:(135)}{space 1} _Itime_136 = 0{p_end}
+{p 0 7}{space 1}{text:(136)}{space 1} _Itime_137 = 0{p_end}
+{p 0 7}{space 1}{text:(137)}{space 1} _Itime_138 = 0{p_end}
+{p 0 7}{space 1}{text:(138)}{space 1} _Itime_139 = 0{p_end}
+{p 0 7}{space 1}{text:(139)}{space 1} _Itime_140 = 0{p_end}
+{p 0 7}{space 1}{text:(140)}{space 1} _Itime_141 = 0{p_end}
+{p 0 7}{space 1}{text:(141)}{space 1} _Itime_142 = 0{p_end}
+{p 0 7}{space 1}{text:(142)}{space 1} _Itime_143 = 0{p_end}
+{p 0 7}{space 1}{text:(143)}{space 1} _Itime_144 = 0{p_end}
+
+{txt}       F(143,9824433) ={res} 2072.89
+{txt}{col 13}Prob > F ={res}    0.0000
+{txt}
+{com}. 
+. // LSDV2 is better than pooled 
+. 
+. // LSDV3
+. 
+. xtreg RGDP_adj_income i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica i.time if income >= 10000 & timemax >= 36, fe
+{txt}{p 0 6 2}note: {bf:2.Sesso} omitted because of collinearity.{p_end}
+{res}
+{txt}Fixed-effects (within) regression{col 49}Number of obs{col 67}={col 69}{res} 9,824,592
+{txt}Group variable: {res}id_lavorat~e{txt}{col 49}Number of groups{col 67}={col 69}{res}   109,702
+
+{txt}R-squared:{col 49}Obs per group:
+     Within  = {res}0.2686{col 63}{txt}min{col 67}={col 69}{res}         1
+{txt}     Between = {res}0.5456{col 63}{txt}avg{col 67}={col 69}{res}      89.6
+{txt}     Overall = {res}0.4910{col 63}{txt}max{col 67}={col 69}{res}       144
+
+{txt}{col 49}F({res}157{txt},{res}9714733{txt}){col 67}={col 70}{res} 22722.73
+{txt}corr(u_i, Xb) = {res}0.5038{txt}{col 49}Prob > F{col 67}={col 73}{res}0.0000
+
+{txt}{hline 18}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}  RGDP_adj_income{col 19}{c |} Coefficient{col 31}  Std. err.{col 43}      t{col 51}   P>|t|{col 59}     [95% con{col 72}f. interval]
+{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{space 12}Sesso {c |}
+{space 15}M  {c |}{col 19}{res}{space 2}        0{col 31}{txt}  (omitted)
+{space 17} {c |}
+{space 8}Age_group {c |}
+{space 11}25-34  {c |}{col 19}{res}{space 2} 187.0159{col 31}{space 2} 14.44317{col 42}{space 1}   12.95{col 51}{space 3}0.000{col 59}{space 4} 158.7078{col 72}{space 3}  215.324
+{txt}{space 11}35-44  {c |}{col 19}{res}{space 2} 336.9981{col 31}{space 2} 17.64491{col 42}{space 1}   19.10{col 51}{space 3}0.000{col 59}{space 4} 302.4147{col 72}{space 3} 371.5814
+{txt}{space 11}45-54  {c |}{col 19}{res}{space 2}  570.767{col 31}{space 2} 21.09803{col 42}{space 1}   27.05{col 51}{space 3}0.000{col 59}{space 4} 529.4157{col 72}{space 3} 612.1184
+{txt}{space 11}55-64  {c |}{col 19}{res}{space 2} 222.9074{col 31}{space 2} 25.27408{col 42}{space 1}    8.82{col 51}{space 3}0.000{col 59}{space 4} 173.3712{col 72}{space 3} 272.4437
+{txt}{space 17} {c |}
+Reduced_class_dim {c |}
+{space 11}medie  {c |}{col 19}{res}{space 2}-24.75208{col 31}{space 2} 9.942551{col 42}{space 1}   -2.49{col 51}{space 3}0.013{col 59}{space 4}-44.23913{col 72}{space 3}-5.265037
+{txt}{space 11}micro  {c |}{col 19}{res}{space 2}-1877.492{col 31}{space 2} 12.13225{col 42}{space 1} -154.75{col 51}{space 3}0.000{col 59}{space 4}-1901.271{col 72}{space 3}-1853.713
+{txt}{space 9}piccole  {c |}{col 19}{res}{space 2}-785.5966{col 31}{space 2} 11.13227{col 42}{space 1}  -70.57{col 51}{space 3}0.000{col 59}{space 4}-807.4154{col 72}{space 3}-763.7777
+{txt}{space 5}sconosciuta  {c |}{col 19}{res}{space 2}-573.2715{col 31}{space 2} 88.63391{col 42}{space 1}   -6.47{col 51}{space 3}0.000{col 59}{space 4}-746.9908{col 72}{space 3}-399.5522
+{txt}{space 17} {c |}
+{space 3}Tipo_contratto {c |}
+{space 12}temp  {c |}{col 19}{res}{space 2}-2124.753{col 31}{space 2} 8.466197{col 42}{space 1} -250.97{col 51}{space 3}0.000{col 59}{space 4}-2141.346{col 72}{space 3} -2108.16
+{txt}{space 17} {c |}
+{space 8}Qualifica {c |}
+{space 5}apprendista  {c |}{col 19}{res}{space 2}-1408.369{col 31}{space 2} 129.9151{col 42}{space 1}  -10.84{col 51}{space 3}0.000{col 59}{space 4}-1662.998{col 72}{space 3} -1153.74
+{txt}{space 7}dirigente  {c |}{col 19}{res}{space 2} 34312.19{col 31}{space 2} 136.9303{col 42}{space 1}  250.58{col 51}{space 3}0.000{col 59}{space 4} 34043.81{col 72}{space 3} 34580.56
+{txt}{space 7}impiegato  {c |}{col 19}{res}{space 2} 904.6126{col 31}{space 2} 129.2702{col 42}{space 1}    7.00{col 51}{space 3}0.000{col 59}{space 4} 651.2476{col 72}{space 3} 1157.978
+{txt}{space 9}operaio  {c |}{col 19}{res}{space 2}-934.4494{col 31}{space 2} 129.4152{col 42}{space 1}   -7.22{col 51}{space 3}0.000{col 59}{space 4}-1188.099{col 72}{space 3}-680.8002
+{txt}{space 10}quadro  {c |}{col 19}{res}{space 2} 11285.25{col 31}{space 2}  131.024{col 42}{space 1}   86.13{col 51}{space 3}0.000{col 59}{space 4} 11028.44{col 72}{space 3} 11542.05
+{txt}{space 17} {c |}
+{space 13}time {c |}
+{space 15}2  {c |}{col 19}{res}{space 2} 6.891637{col 31}{space 2} 26.70051{col 42}{space 1}    0.26{col 51}{space 3}0.796{col 59}{space 4}-45.44041{col 72}{space 3} 59.22368
+{txt}{space 15}3  {c |}{col 19}{res}{space 2} 19.93759{col 31}{space 2} 26.57532{col 42}{space 1}    0.75{col 51}{space 3}0.453{col 59}{space 4}-32.14909{col 72}{space 3} 72.02426
+{txt}{space 15}4  {c |}{col 19}{res}{space 2} 55.13393{col 31}{space 2} 26.42521{col 42}{space 1}    2.09{col 51}{space 3}0.037{col 59}{space 4}  3.34146{col 72}{space 3} 106.9264
+{txt}{space 15}5  {c |}{col 19}{res}{space 2} 108.7515{col 31}{space 2} 26.28735{col 42}{space 1}    4.14{col 51}{space 3}0.000{col 59}{space 4} 57.22927{col 72}{space 3} 160.2738
+{txt}{space 15}6  {c |}{col 19}{res}{space 2} 141.5077{col 31}{space 2} 26.23288{col 42}{space 1}    5.39{col 51}{space 3}0.000{col 59}{space 4} 90.09218{col 72}{space 3} 192.9232
+{txt}{space 15}7  {c |}{col 19}{res}{space 2} 206.9035{col 31}{space 2} 26.14579{col 42}{space 1}    7.91{col 51}{space 3}0.000{col 59}{space 4} 155.6587{col 72}{space 3} 258.1483
+{txt}{space 15}8  {c |}{col 19}{res}{space 2} 294.4942{col 31}{space 2}   26.097{col 42}{space 1}   11.28{col 51}{space 3}0.000{col 59}{space 4}  243.345{col 72}{space 3} 345.6434
+{txt}{space 15}9  {c |}{col 19}{res}{space 2} 377.5009{col 31}{space 2} 26.05155{col 42}{space 1}   14.49{col 51}{space 3}0.000{col 59}{space 4} 326.4408{col 72}{space 3}  428.561
+{txt}{space 14}10  {c |}{col 19}{res}{space 2} 459.2463{col 31}{space 2} 26.03788{col 42}{space 1}   17.64{col 51}{space 3}0.000{col 59}{space 4}  408.213{col 72}{space 3} 510.2796
+{txt}{space 14}11  {c |}{col 19}{res}{space 2} 531.1583{col 31}{space 2} 26.03277{col 42}{space 1}   20.40{col 51}{space 3}0.000{col 59}{space 4}  480.135{col 72}{space 3} 582.1816
+{txt}{space 14}12  {c |}{col 19}{res}{space 2}  584.921{col 31}{space 2} 26.03186{col 42}{space 1}   22.47{col 51}{space 3}0.000{col 59}{space 4} 533.8995{col 72}{space 3} 635.9425
+{txt}{space 14}13  {c |}{col 19}{res}{space 2} 1099.616{col 31}{space 2} 25.94678{col 42}{space 1}   42.38{col 51}{space 3}0.000{col 59}{space 4} 1048.761{col 72}{space 3} 1150.471
+{txt}{space 14}14  {c |}{col 19}{res}{space 2} 1112.533{col 31}{space 2} 25.92515{col 42}{space 1}   42.91{col 51}{space 3}0.000{col 59}{space 4}  1061.72{col 72}{space 3} 1163.345
+{txt}{space 14}15  {c |}{col 19}{res}{space 2} 1132.183{col 31}{space 2} 25.90715{col 42}{space 1}   43.70{col 51}{space 3}0.000{col 59}{space 4} 1081.406{col 72}{space 3}  1182.96
+{txt}{space 14}16  {c |}{col 19}{res}{space 2} 1151.297{col 31}{space 2} 25.89167{col 42}{space 1}   44.47{col 51}{space 3}0.000{col 59}{space 4}  1100.55{col 72}{space 3} 1202.044
+{txt}{space 14}17  {c |}{col 19}{res}{space 2} 1175.192{col 31}{space 2}   25.879{col 42}{space 1}   45.41{col 51}{space 3}0.000{col 59}{space 4}  1124.47{col 72}{space 3} 1225.914
+{txt}{space 14}18  {c |}{col 19}{res}{space 2} 1185.735{col 31}{space 2} 25.87626{col 42}{space 1}   45.82{col 51}{space 3}0.000{col 59}{space 4} 1135.019{col 72}{space 3} 1236.452
+{txt}{space 14}19  {c |}{col 19}{res}{space 2} 1213.082{col 31}{space 2} 25.87338{col 42}{space 1}   46.89{col 51}{space 3}0.000{col 59}{space 4} 1162.371{col 72}{space 3} 1263.793
+{txt}{space 14}20  {c |}{col 19}{res}{space 2} 1237.941{col 31}{space 2} 25.88004{col 42}{space 1}   47.83{col 51}{space 3}0.000{col 59}{space 4} 1187.218{col 72}{space 3} 1288.665
+{txt}{space 14}21  {c |}{col 19}{res}{space 2}  1257.89{col 31}{space 2} 25.87595{col 42}{space 1}   48.61{col 51}{space 3}0.000{col 59}{space 4} 1207.174{col 72}{space 3} 1308.606
+{txt}{space 14}22  {c |}{col 19}{res}{space 2}  1278.54{col 31}{space 2} 25.88478{col 42}{space 1}   49.39{col 51}{space 3}0.000{col 59}{space 4} 1227.807{col 72}{space 3} 1329.273
+{txt}{space 14}23  {c |}{col 19}{res}{space 2} 1298.691{col 31}{space 2} 25.88716{col 42}{space 1}   50.17{col 51}{space 3}0.000{col 59}{space 4} 1247.953{col 72}{space 3} 1349.429
+{txt}{space 14}24  {c |}{col 19}{res}{space 2} 1320.701{col 31}{space 2}  25.8958{col 42}{space 1}   51.00{col 51}{space 3}0.000{col 59}{space 4} 1269.946{col 72}{space 3} 1371.456
+{txt}{space 14}25  {c |}{col 19}{res}{space 2} 1759.383{col 31}{space 2} 25.91166{col 42}{space 1}   67.90{col 51}{space 3}0.000{col 59}{space 4} 1708.597{col 72}{space 3} 1810.169
+{txt}{space 14}26  {c |}{col 19}{res}{space 2} 1769.287{col 31}{space 2} 25.88998{col 42}{space 1}   68.34{col 51}{space 3}0.000{col 59}{space 4} 1718.544{col 72}{space 3}  1820.03
+{txt}{space 14}27  {c |}{col 19}{res}{space 2} 1789.812{col 31}{space 2} 25.86847{col 42}{space 1}   69.19{col 51}{space 3}0.000{col 59}{space 4} 1739.111{col 72}{space 3} 1840.513
+{txt}{space 14}28  {c |}{col 19}{res}{space 2} 1814.822{col 31}{space 2} 25.85748{col 42}{space 1}   70.19{col 51}{space 3}0.000{col 59}{space 4} 1764.142{col 72}{space 3} 1865.502
+{txt}{space 14}29  {c |}{col 19}{res}{space 2} 1833.677{col 31}{space 2}  25.8467{col 42}{space 1}   70.94{col 51}{space 3}0.000{col 59}{space 4} 1783.018{col 72}{space 3} 1884.336
+{txt}{space 14}30  {c |}{col 19}{res}{space 2} 1844.766{col 31}{space 2} 25.84161{col 42}{space 1}   71.39{col 51}{space 3}0.000{col 59}{space 4} 1794.118{col 72}{space 3} 1895.415
+{txt}{space 14}31  {c |}{col 19}{res}{space 2} 1867.285{col 31}{space 2} 25.84686{col 42}{space 1}   72.24{col 51}{space 3}0.000{col 59}{space 4} 1816.626{col 72}{space 3} 1917.944
+{txt}{space 14}32  {c |}{col 19}{res}{space 2} 1890.487{col 31}{space 2} 25.85175{col 42}{space 1}   73.13{col 51}{space 3}0.000{col 59}{space 4} 1839.819{col 72}{space 3} 1941.156
+{txt}{space 14}33  {c |}{col 19}{res}{space 2} 1905.869{col 31}{space 2} 25.84804{col 42}{space 1}   73.73{col 51}{space 3}0.000{col 59}{space 4} 1855.208{col 72}{space 3}  1956.53
+{txt}{space 14}34  {c |}{col 19}{res}{space 2} 1927.184{col 31}{space 2} 25.85863{col 42}{space 1}   74.53{col 51}{space 3}0.000{col 59}{space 4} 1876.502{col 72}{space 3} 1977.866
+{txt}{space 14}35  {c |}{col 19}{res}{space 2} 1948.453{col 31}{space 2} 25.86691{col 42}{space 1}   75.33{col 51}{space 3}0.000{col 59}{space 4} 1897.755{col 72}{space 3} 1999.152
+{txt}{space 14}36  {c |}{col 19}{res}{space 2} 1971.095{col 31}{space 2} 25.88227{col 42}{space 1}   76.16{col 51}{space 3}0.000{col 59}{space 4} 1920.367{col 72}{space 3} 2021.823
+{txt}{space 14}37  {c |}{col 19}{res}{space 2} 3121.121{col 31}{space 2} 26.04409{col 42}{space 1}  119.84{col 51}{space 3}0.000{col 59}{space 4} 3070.075{col 72}{space 3} 3172.166
+{txt}{space 14}38  {c |}{col 19}{res}{space 2} 3142.692{col 31}{space 2} 26.04241{col 42}{space 1}  120.68{col 51}{space 3}0.000{col 59}{space 4}  3091.65{col 72}{space 3} 3193.734
+{txt}{space 14}39  {c |}{col 19}{res}{space 2} 3167.779{col 31}{space 2} 26.04343{col 42}{space 1}  121.63{col 51}{space 3}0.000{col 59}{space 4} 3116.735{col 72}{space 3} 3218.823
+{txt}{space 14}40  {c |}{col 19}{res}{space 2} 3214.279{col 31}{space 2} 26.05242{col 42}{space 1}  123.38{col 51}{space 3}0.000{col 59}{space 4} 3163.217{col 72}{space 3} 3265.341
+{txt}{space 14}41  {c |}{col 19}{res}{space 2}  3248.69{col 31}{space 2} 26.06433{col 42}{space 1}  124.64{col 51}{space 3}0.000{col 59}{space 4} 3197.605{col 72}{space 3} 3299.775
+{txt}{space 14}42  {c |}{col 19}{res}{space 2} 3262.129{col 31}{space 2} 26.07325{col 42}{space 1}  125.11{col 51}{space 3}0.000{col 59}{space 4} 3211.027{col 72}{space 3} 3313.232
+{txt}{space 14}43  {c |}{col 19}{res}{space 2} 3299.084{col 31}{space 2} 26.09144{col 42}{space 1}  126.44{col 51}{space 3}0.000{col 59}{space 4} 3247.946{col 72}{space 3} 3350.222
+{txt}{space 14}44  {c |}{col 19}{res}{space 2}  3341.78{col 31}{space 2} 26.12052{col 42}{space 1}  127.94{col 51}{space 3}0.000{col 59}{space 4} 3290.585{col 72}{space 3} 3392.975
+{txt}{space 14}45  {c |}{col 19}{res}{space 2} 3362.944{col 31}{space 2} 26.13805{col 42}{space 1}  128.66{col 51}{space 3}0.000{col 59}{space 4} 3311.714{col 72}{space 3} 3414.174
+{txt}{space 14}46  {c |}{col 19}{res}{space 2} 3390.998{col 31}{space 2} 26.17212{col 42}{space 1}  129.57{col 51}{space 3}0.000{col 59}{space 4} 3339.701{col 72}{space 3} 3442.294
+{txt}{space 14}47  {c |}{col 19}{res}{space 2} 3415.772{col 31}{space 2} 26.20951{col 42}{space 1}  130.33{col 51}{space 3}0.000{col 59}{space 4} 3364.402{col 72}{space 3} 3467.142
+{txt}{space 14}48  {c |}{col 19}{res}{space 2} 3436.649{col 31}{space 2} 26.24809{col 42}{space 1}  130.93{col 51}{space 3}0.000{col 59}{space 4} 3385.204{col 72}{space 3} 3488.095
+{txt}{space 14}49  {c |}{col 19}{res}{space 2}   4402.3{col 31}{space 2} 26.54391{col 42}{space 1}  165.85{col 51}{space 3}0.000{col 59}{space 4} 4350.275{col 72}{space 3} 4454.326
+{txt}{space 14}50  {c |}{col 19}{res}{space 2} 4415.184{col 31}{space 2} 26.53529{col 42}{space 1}  166.39{col 51}{space 3}0.000{col 59}{space 4} 4363.176{col 72}{space 3} 4467.192
+{txt}{space 14}51  {c |}{col 19}{res}{space 2} 4438.858{col 31}{space 2} 26.53661{col 42}{space 1}  167.27{col 51}{space 3}0.000{col 59}{space 4} 4386.847{col 72}{space 3} 4490.869
+{txt}{space 14}52  {c |}{col 19}{res}{space 2}  4467.18{col 31}{space 2} 26.55075{col 42}{space 1}  168.25{col 51}{space 3}0.000{col 59}{space 4} 4415.141{col 72}{space 3} 4519.218
+{txt}{space 14}53  {c |}{col 19}{res}{space 2}  4492.45{col 31}{space 2} 26.56289{col 42}{space 1}  169.13{col 51}{space 3}0.000{col 59}{space 4} 4440.388{col 72}{space 3} 4544.512
+{txt}{space 14}54  {c |}{col 19}{res}{space 2} 4511.928{col 31}{space 2} 26.57128{col 42}{space 1}  169.80{col 51}{space 3}0.000{col 59}{space 4} 4459.849{col 72}{space 3} 4564.006
+{txt}{space 14}55  {c |}{col 19}{res}{space 2}  4558.32{col 31}{space 2} 26.60134{col 42}{space 1}  171.36{col 51}{space 3}0.000{col 59}{space 4} 4506.183{col 72}{space 3} 4610.458
+{txt}{space 14}56  {c |}{col 19}{res}{space 2} 4603.481{col 31}{space 2} 26.63936{col 42}{space 1}  172.81{col 51}{space 3}0.000{col 59}{space 4} 4551.269{col 72}{space 3} 4655.693
+{txt}{space 14}57  {c |}{col 19}{res}{space 2} 4627.388{col 31}{space 2} 26.65785{col 42}{space 1}  173.58{col 51}{space 3}0.000{col 59}{space 4} 4575.139{col 72}{space 3} 4679.636
+{txt}{space 14}58  {c |}{col 19}{res}{space 2} 4652.145{col 31}{space 2} 26.69047{col 42}{space 1}  174.30{col 51}{space 3}0.000{col 59}{space 4} 4599.833{col 72}{space 3} 4704.458
+{txt}{space 14}59  {c |}{col 19}{res}{space 2} 4670.937{col 31}{space 2} 26.72466{col 42}{space 1}  174.78{col 51}{space 3}0.000{col 59}{space 4} 4618.558{col 72}{space 3} 4723.317
+{txt}{space 14}60  {c |}{col 19}{res}{space 2} 4689.754{col 31}{space 2} 26.76032{col 42}{space 1}  175.25{col 51}{space 3}0.000{col 59}{space 4} 4637.305{col 72}{space 3} 4742.203
+{txt}{space 14}61  {c |}{col 19}{res}{space 2} 4953.422{col 31}{space 2}  26.9767{col 42}{space 1}  183.62{col 51}{space 3}0.000{col 59}{space 4} 4900.549{col 72}{space 3} 5006.296
+{txt}{space 14}62  {c |}{col 19}{res}{space 2} 4962.519{col 31}{space 2} 26.96023{col 42}{space 1}  184.07{col 51}{space 3}0.000{col 59}{space 4} 4909.678{col 72}{space 3}  5015.36
+{txt}{space 14}63  {c |}{col 19}{res}{space 2} 4986.214{col 31}{space 2} 26.95992{col 42}{space 1}  184.95{col 51}{space 3}0.000{col 59}{space 4} 4933.373{col 72}{space 3} 5039.054
+{txt}{space 14}64  {c |}{col 19}{res}{space 2} 5012.483{col 31}{space 2} 26.96731{col 42}{space 1}  185.87{col 51}{space 3}0.000{col 59}{space 4} 4959.628{col 72}{space 3} 5065.338
+{txt}{space 14}65  {c |}{col 19}{res}{space 2} 5036.148{col 31}{space 2} 26.97637{col 42}{space 1}  186.69{col 51}{space 3}0.000{col 59}{space 4} 4983.276{col 72}{space 3} 5089.021
+{txt}{space 14}66  {c |}{col 19}{res}{space 2}   5055.4{col 31}{space 2}  26.9869{col 42}{space 1}  187.33{col 51}{space 3}0.000{col 59}{space 4} 5002.507{col 72}{space 3} 5108.294
+{txt}{space 14}67  {c |}{col 19}{res}{space 2}  5106.62{col 31}{space 2} 27.01914{col 42}{space 1}  189.00{col 51}{space 3}0.000{col 59}{space 4} 5053.663{col 72}{space 3} 5159.576
+{txt}{space 14}68  {c |}{col 19}{res}{space 2} 5137.447{col 31}{space 2} 27.05821{col 42}{space 1}  189.87{col 51}{space 3}0.000{col 59}{space 4} 5084.414{col 72}{space 3}  5190.48
+{txt}{space 14}69  {c |}{col 19}{res}{space 2} 5151.768{col 31}{space 2} 27.08075{col 42}{space 1}  190.24{col 51}{space 3}0.000{col 59}{space 4} 5098.691{col 72}{space 3} 5204.846
+{txt}{space 14}70  {c |}{col 19}{res}{space 2} 5175.019{col 31}{space 2} 27.11632{col 42}{space 1}  190.85{col 51}{space 3}0.000{col 59}{space 4} 5121.871{col 72}{space 3} 5228.166
+{txt}{space 14}71  {c |}{col 19}{res}{space 2} 5203.089{col 31}{space 2}  27.1514{col 42}{space 1}  191.63{col 51}{space 3}0.000{col 59}{space 4} 5149.873{col 72}{space 3} 5256.304
+{txt}{space 14}72  {c |}{col 19}{res}{space 2} 5219.206{col 31}{space 2} 27.18024{col 42}{space 1}  192.02{col 51}{space 3}0.000{col 59}{space 4} 5165.933{col 72}{space 3} 5272.478
+{txt}{space 14}73  {c |}{col 19}{res}{space 2} 5479.094{col 31}{space 2} 27.39729{col 42}{space 1}  199.99{col 51}{space 3}0.000{col 59}{space 4} 5425.396{col 72}{space 3} 5532.792
+{txt}{space 14}74  {c |}{col 19}{res}{space 2} 5493.994{col 31}{space 2} 27.39121{col 42}{space 1}  200.58{col 51}{space 3}0.000{col 59}{space 4} 5440.308{col 72}{space 3} 5547.679
+{txt}{space 14}75  {c |}{col 19}{res}{space 2} 5505.845{col 31}{space 2} 27.39277{col 42}{space 1}  201.00{col 51}{space 3}0.000{col 59}{space 4} 5452.156{col 72}{space 3} 5559.533
+{txt}{space 14}76  {c |}{col 19}{res}{space 2} 5533.703{col 31}{space 2} 27.40813{col 42}{space 1}  201.90{col 51}{space 3}0.000{col 59}{space 4} 5479.984{col 72}{space 3} 5587.422
+{txt}{space 14}77  {c |}{col 19}{res}{space 2} 5545.914{col 31}{space 2} 27.41512{col 42}{space 1}  202.29{col 51}{space 3}0.000{col 59}{space 4} 5492.181{col 72}{space 3} 5599.646
+{txt}{space 14}78  {c |}{col 19}{res}{space 2} 5569.023{col 31}{space 2}  27.4261{col 42}{space 1}  203.06{col 51}{space 3}0.000{col 59}{space 4} 5515.269{col 72}{space 3} 5622.778
+{txt}{space 14}79  {c |}{col 19}{res}{space 2} 5627.718{col 31}{space 2} 27.46649{col 42}{space 1}  204.89{col 51}{space 3}0.000{col 59}{space 4} 5573.885{col 72}{space 3} 5681.551
+{txt}{space 14}80  {c |}{col 19}{res}{space 2} 5670.691{col 31}{space 2} 27.50649{col 42}{space 1}  206.16{col 51}{space 3}0.000{col 59}{space 4} 5616.779{col 72}{space 3} 5724.602
+{txt}{space 14}81  {c |}{col 19}{res}{space 2} 5696.313{col 31}{space 2} 27.53309{col 42}{space 1}  206.89{col 51}{space 3}0.000{col 59}{space 4} 5642.349{col 72}{space 3} 5750.277
+{txt}{space 14}82  {c |}{col 19}{res}{space 2} 5725.512{col 31}{space 2} 27.57318{col 42}{space 1}  207.65{col 51}{space 3}0.000{col 59}{space 4}  5671.47{col 72}{space 3} 5779.555
+{txt}{space 14}83  {c |}{col 19}{res}{space 2}  5748.84{col 31}{space 2} 27.60892{col 42}{space 1}  208.22{col 51}{space 3}0.000{col 59}{space 4} 5694.728{col 72}{space 3} 5802.953
+{txt}{space 14}84  {c |}{col 19}{res}{space 2} 5771.834{col 31}{space 2}  27.6506{col 42}{space 1}  208.74{col 51}{space 3}0.000{col 59}{space 4}  5717.64{col 72}{space 3} 5826.029
+{txt}{space 14}85  {c |}{col 19}{res}{space 2} 6527.319{col 31}{space 2} 27.97234{col 42}{space 1}  233.35{col 51}{space 3}0.000{col 59}{space 4} 6472.495{col 72}{space 3} 6582.144
+{txt}{space 14}86  {c |}{col 19}{res}{space 2} 6542.386{col 31}{space 2} 27.96599{col 42}{space 1}  233.94{col 51}{space 3}0.000{col 59}{space 4} 6487.574{col 72}{space 3} 6597.198
+{txt}{space 14}87  {c |}{col 19}{res}{space 2}  6552.42{col 31}{space 2} 27.97483{col 42}{space 1}  234.23{col 51}{space 3}0.000{col 59}{space 4}  6497.59{col 72}{space 3} 6607.249
+{txt}{space 14}88  {c |}{col 19}{res}{space 2} 6579.951{col 31}{space 2}  27.9896{col 42}{space 1}  235.09{col 51}{space 3}0.000{col 59}{space 4} 6525.092{col 72}{space 3} 6634.809
+{txt}{space 14}89  {c |}{col 19}{res}{space 2} 6607.536{col 31}{space 2} 28.00854{col 42}{space 1}  235.91{col 51}{space 3}0.000{col 59}{space 4}  6552.64{col 72}{space 3} 6662.432
+{txt}{space 14}90  {c |}{col 19}{res}{space 2} 6629.155{col 31}{space 2} 28.01831{col 42}{space 1}  236.60{col 51}{space 3}0.000{col 59}{space 4}  6574.24{col 72}{space 3} 6684.069
+{txt}{space 14}91  {c |}{col 19}{res}{space 2} 6670.414{col 31}{space 2} 28.05776{col 42}{space 1}  237.74{col 51}{space 3}0.000{col 59}{space 4} 6615.421{col 72}{space 3} 6725.406
+{txt}{space 14}92  {c |}{col 19}{res}{space 2} 6713.895{col 31}{space 2} 28.10371{col 42}{space 1}  238.90{col 51}{space 3}0.000{col 59}{space 4} 6658.813{col 72}{space 3} 6768.978
+{txt}{space 14}93  {c |}{col 19}{res}{space 2} 6733.474{col 31}{space 2} 28.12327{col 42}{space 1}  239.43{col 51}{space 3}0.000{col 59}{space 4} 6678.353{col 72}{space 3} 6788.595
+{txt}{space 14}94  {c |}{col 19}{res}{space 2}  6765.65{col 31}{space 2} 28.16483{col 42}{space 1}  240.22{col 51}{space 3}0.000{col 59}{space 4} 6710.448{col 72}{space 3} 6820.852
+{txt}{space 14}95  {c |}{col 19}{res}{space 2} 6790.399{col 31}{space 2} 28.21583{col 42}{space 1}  240.66{col 51}{space 3}0.000{col 59}{space 4} 6735.097{col 72}{space 3} 6845.701
+{txt}{space 14}96  {c |}{col 19}{res}{space 2} 6817.815{col 31}{space 2} 28.25731{col 42}{space 1}  241.28{col 51}{space 3}0.000{col 59}{space 4} 6762.432{col 72}{space 3} 6873.198
+{txt}{space 14}97  {c |}{col 19}{res}{space 2} 7537.072{col 31}{space 2} 28.62982{col 42}{space 1}  263.26{col 51}{space 3}0.000{col 59}{space 4} 7480.959{col 72}{space 3} 7593.186
+{txt}{space 14}98  {c |}{col 19}{res}{space 2} 7545.567{col 31}{space 2} 28.63108{col 42}{space 1}  263.54{col 51}{space 3}0.000{col 59}{space 4} 7489.451{col 72}{space 3} 7601.683
+{txt}{space 14}99  {c |}{col 19}{res}{space 2}  7553.81{col 31}{space 2} 28.63536{col 42}{space 1}  263.79{col 51}{space 3}0.000{col 59}{space 4} 7497.685{col 72}{space 3} 7609.934
+{txt}{space 13}100  {c |}{col 19}{res}{space 2} 7580.331{col 31}{space 2}  28.6605{col 42}{space 1}  264.49{col 51}{space 3}0.000{col 59}{space 4} 7524.157{col 72}{space 3} 7636.504
+{txt}{space 13}101  {c |}{col 19}{res}{space 2} 7601.596{col 31}{space 2} 28.68968{col 42}{space 1}  264.96{col 51}{space 3}0.000{col 59}{space 4} 7545.365{col 72}{space 3} 7657.826
+{txt}{space 13}102  {c |}{col 19}{res}{space 2} 7604.762{col 31}{space 2} 28.70529{col 42}{space 1}  264.93{col 51}{space 3}0.000{col 59}{space 4}   7548.5{col 72}{space 3} 7661.023
+{txt}{space 13}103  {c |}{col 19}{res}{space 2} 7646.158{col 31}{space 2} 28.74892{col 42}{space 1}  265.96{col 51}{space 3}0.000{col 59}{space 4} 7589.811{col 72}{space 3} 7702.505
+{txt}{space 13}104  {c |}{col 19}{res}{space 2} 7689.379{col 31}{space 2} 28.80577{col 42}{space 1}  266.94{col 51}{space 3}0.000{col 59}{space 4} 7632.921{col 72}{space 3} 7745.837
+{txt}{space 13}105  {c |}{col 19}{res}{space 2} 7703.886{col 31}{space 2} 28.84086{col 42}{space 1}  267.12{col 51}{space 3}0.000{col 59}{space 4} 7647.359{col 72}{space 3} 7760.413
+{txt}{space 13}106  {c |}{col 19}{res}{space 2} 7725.119{col 31}{space 2}  28.8925{col 42}{space 1}  267.37{col 51}{space 3}0.000{col 59}{space 4} 7668.491{col 72}{space 3} 7781.748
+{txt}{space 13}107  {c |}{col 19}{res}{space 2} 7748.838{col 31}{space 2} 28.94299{col 42}{space 1}  267.73{col 51}{space 3}0.000{col 59}{space 4} 7692.111{col 72}{space 3} 7805.565
+{txt}{space 13}108  {c |}{col 19}{res}{space 2} 7764.671{col 31}{space 2} 28.99557{col 42}{space 1}  267.79{col 51}{space 3}0.000{col 59}{space 4}  7707.84{col 72}{space 3} 7821.501
+{txt}{space 13}109  {c |}{col 19}{res}{space 2} 7987.223{col 31}{space 2} 29.29572{col 42}{space 1}  272.64{col 51}{space 3}0.000{col 59}{space 4} 7929.805{col 72}{space 3} 8044.642
+{txt}{space 13}110  {c |}{col 19}{res}{space 2} 7997.674{col 31}{space 2} 29.30148{col 42}{space 1}  272.94{col 51}{space 3}0.000{col 59}{space 4} 7940.244{col 72}{space 3} 8055.104
+{txt}{space 13}111  {c |}{col 19}{res}{space 2} 8002.536{col 31}{space 2} 29.31731{col 42}{space 1}  272.96{col 51}{space 3}0.000{col 59}{space 4} 7945.075{col 72}{space 3} 8059.997
+{txt}{space 13}112  {c |}{col 19}{res}{space 2} 8016.171{col 31}{space 2} 29.35024{col 42}{space 1}  273.12{col 51}{space 3}0.000{col 59}{space 4} 7958.646{col 72}{space 3} 8073.696
+{txt}{space 13}113  {c |}{col 19}{res}{space 2} 8025.599{col 31}{space 2} 29.38959{col 42}{space 1}  273.08{col 51}{space 3}0.000{col 59}{space 4} 7967.997{col 72}{space 3} 8083.202
+{txt}{space 13}114  {c |}{col 19}{res}{space 2} 8039.559{col 31}{space 2} 29.41226{col 42}{space 1}  273.34{col 51}{space 3}0.000{col 59}{space 4} 7981.912{col 72}{space 3} 8097.206
+{txt}{space 13}115  {c |}{col 19}{res}{space 2}     8075{col 31}{space 2}  29.4865{col 42}{space 1}  273.85{col 51}{space 3}0.000{col 59}{space 4} 8017.207{col 72}{space 3} 8132.792
+{txt}{space 13}116  {c |}{col 19}{res}{space 2} 8111.196{col 31}{space 2} 29.56067{col 42}{space 1}  274.39{col 51}{space 3}0.000{col 59}{space 4} 8053.258{col 72}{space 3} 8169.133
+{txt}{space 13}117  {c |}{col 19}{res}{space 2} 8135.621{col 31}{space 2}  29.6203{col 42}{space 1}  274.66{col 51}{space 3}0.000{col 59}{space 4} 8077.566{col 72}{space 3} 8193.676
+{txt}{space 13}118  {c |}{col 19}{res}{space 2} 8161.324{col 31}{space 2} 29.67698{col 42}{space 1}  275.01{col 51}{space 3}0.000{col 59}{space 4} 8103.159{col 72}{space 3}  8219.49
+{txt}{space 13}119  {c |}{col 19}{res}{space 2} 8184.509{col 31}{space 2} 29.74902{col 42}{space 1}  275.12{col 51}{space 3}0.000{col 59}{space 4} 8126.202{col 72}{space 3} 8242.816
+{txt}{space 13}120  {c |}{col 19}{res}{space 2} 8196.877{col 31}{space 2} 29.82133{col 42}{space 1}  274.87{col 51}{space 3}0.000{col 59}{space 4} 8138.428{col 72}{space 3} 8255.326
+{txt}{space 13}121  {c |}{col 19}{res}{space 2} 8440.053{col 31}{space 2}   30.189{col 42}{space 1}  279.57{col 51}{space 3}0.000{col 59}{space 4} 8380.883{col 72}{space 3} 8499.222
+{txt}{space 13}122  {c |}{col 19}{res}{space 2} 8441.415{col 31}{space 2} 30.18777{col 42}{space 1}  279.63{col 51}{space 3}0.000{col 59}{space 4} 8382.248{col 72}{space 3} 8500.582
+{txt}{space 13}123  {c |}{col 19}{res}{space 2} 8447.245{col 31}{space 2} 30.20868{col 42}{space 1}  279.63{col 51}{space 3}0.000{col 59}{space 4} 8388.037{col 72}{space 3} 8506.453
+{txt}{space 13}124  {c |}{col 19}{res}{space 2} 8459.809{col 31}{space 2} 30.24173{col 42}{space 1}  279.74{col 51}{space 3}0.000{col 59}{space 4} 8400.536{col 72}{space 3} 8519.082
+{txt}{space 13}125  {c |}{col 19}{res}{space 2} 8463.352{col 31}{space 2} 30.27218{col 42}{space 1}  279.58{col 51}{space 3}0.000{col 59}{space 4}  8404.02{col 72}{space 3} 8522.685
+{txt}{space 13}126  {c |}{col 19}{res}{space 2} 8474.677{col 31}{space 2} 30.29229{col 42}{space 1}  279.76{col 51}{space 3}0.000{col 59}{space 4} 8415.305{col 72}{space 3} 8534.049
+{txt}{space 13}127  {c |}{col 19}{res}{space 2} 8520.993{col 31}{space 2} 30.36657{col 42}{space 1}  280.60{col 51}{space 3}0.000{col 59}{space 4} 8461.475{col 72}{space 3}  8580.51
+{txt}{space 13}128  {c |}{col 19}{res}{space 2} 8558.606{col 31}{space 2} 30.45442{col 42}{space 1}  281.03{col 51}{space 3}0.000{col 59}{space 4} 8498.916{col 72}{space 3} 8618.296
+{txt}{space 13}129  {c |}{col 19}{res}{space 2} 8587.776{col 31}{space 2} 30.51413{col 42}{space 1}  281.44{col 51}{space 3}0.000{col 59}{space 4} 8527.969{col 72}{space 3} 8647.583
+{txt}{space 13}130  {c |}{col 19}{res}{space 2} 8608.586{col 31}{space 2} 30.57423{col 42}{space 1}  281.56{col 51}{space 3}0.000{col 59}{space 4} 8548.662{col 72}{space 3} 8668.511
+{txt}{space 13}131  {c |}{col 19}{res}{space 2} 8624.097{col 31}{space 2} 30.65239{col 42}{space 1}  281.35{col 51}{space 3}0.000{col 59}{space 4} 8564.019{col 72}{space 3} 8684.174
+{txt}{space 13}132  {c |}{col 19}{res}{space 2} 8627.618{col 31}{space 2}  30.7205{col 42}{space 1}  280.84{col 51}{space 3}0.000{col 59}{space 4} 8567.407{col 72}{space 3} 8687.829
+{txt}{space 13}133  {c |}{col 19}{res}{space 2} 8490.567{col 31}{space 2} 30.96657{col 42}{space 1}  274.18{col 51}{space 3}0.000{col 59}{space 4} 8429.874{col 72}{space 3}  8551.26
+{txt}{space 13}134  {c |}{col 19}{res}{space 2} 8493.831{col 31}{space 2} 30.97881{col 42}{space 1}  274.18{col 51}{space 3}0.000{col 59}{space 4} 8433.114{col 72}{space 3} 8554.549
+{txt}{space 13}135  {c |}{col 19}{res}{space 2} 8488.437{col 31}{space 2} 31.01065{col 42}{space 1}  273.73{col 51}{space 3}0.000{col 59}{space 4} 8427.658{col 72}{space 3} 8549.217
+{txt}{space 13}136  {c |}{col 19}{res}{space 2} 8492.995{col 31}{space 2} 31.05995{col 42}{space 1}  273.44{col 51}{space 3}0.000{col 59}{space 4} 8432.118{col 72}{space 3} 8553.871
+{txt}{space 13}137  {c |}{col 19}{res}{space 2} 8494.909{col 31}{space 2} 31.11334{col 42}{space 1}  273.03{col 51}{space 3}0.000{col 59}{space 4} 8433.928{col 72}{space 3}  8555.89
+{txt}{space 13}138  {c |}{col 19}{res}{space 2} 8509.354{col 31}{space 2} 31.16048{col 42}{space 1}  273.08{col 51}{space 3}0.000{col 59}{space 4} 8448.281{col 72}{space 3} 8570.428
+{txt}{space 13}139  {c |}{col 19}{res}{space 2} 8557.702{col 31}{space 2} 31.28571{col 42}{space 1}  273.53{col 51}{space 3}0.000{col 59}{space 4} 8496.383{col 72}{space 3} 8619.021
+{txt}{space 13}140  {c |}{col 19}{res}{space 2} 8594.332{col 31}{space 2} 31.41685{col 42}{space 1}  273.56{col 51}{space 3}0.000{col 59}{space 4} 8532.756{col 72}{space 3} 8655.908
+{txt}{space 13}141  {c |}{col 19}{res}{space 2} 8622.181{col 31}{space 2} 31.51857{col 42}{space 1}  273.56{col 51}{space 3}0.000{col 59}{space 4} 8560.406{col 72}{space 3} 8683.956
+{txt}{space 13}142  {c |}{col 19}{res}{space 2} 8647.255{col 31}{space 2} 31.63411{col 42}{space 1}  273.35{col 51}{space 3}0.000{col 59}{space 4} 8585.253{col 72}{space 3} 8709.257
+{txt}{space 13}143  {c |}{col 19}{res}{space 2} 8659.736{col 31}{space 2} 31.75014{col 42}{space 1}  272.75{col 51}{space 3}0.000{col 59}{space 4} 8597.507{col 72}{space 3} 8721.965
+{txt}{space 13}144  {c |}{col 19}{res}{space 2} 8678.758{col 31}{space 2}  31.8868{col 42}{space 1}  272.17{col 51}{space 3}0.000{col 59}{space 4} 8616.261{col 72}{space 3} 8741.255
+{txt}{space 17} {c |}
+{space 12}_cons {c |}{col 19}{res}{space 2} 21774.27{col 31}{space 2} 131.3167{col 42}{space 1}  165.81{col 51}{space 3}0.000{col 59}{space 4} 21516.89{col 72}{space 3} 22031.65
+{txt}{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+          sigma_u {c |} {res} 12147.815
+          {txt}sigma_e {c |} {res} 5093.9622
+              {txt}rho {c |} {res}  .8504566{txt}   (fraction of variance due to u_i)
+{hline 18}{c BT}{hline 64}
+F test that all u_i=0: F({res}109701{txt}, {res}9714733{txt}) = {res}357.16{col 62}{txt}Prob > F = {res}0.0000
+{txt}
+{com}. 
+. // LSDV3 even better
+. 
+. eststo LSDV3
+{txt}
+{com}. 
+. // PANEL DATA ANALYSIS - RANDOM EFFECT with GLS
+. 
+. xtreg RGDP_adj_income i.Sesso i.Age_group i.Reduced_class_dim i.Tipo_contratto i.Qualifica if income >= 10000 & timemax >= 36
+{res}
+{txt}Random-effects GLS regression                   Number of obs     = {res} 9,824,592
+{txt}Group variable: {res}id_lavorat~e                    {txt}Number of groups  = {res}   109,702
+
+{txt}R-squared:                                      Obs per group:
+     Within  = {res}0.1858                                         {txt}min = {res}         1
+{txt}     Between = {res}0.4606                                         {txt}avg = {res}      89.6
+{txt}     Overall = {res}0.4630                                         {txt}max = {res}       144
+
+                                                {txt}Wald chi2({res}15{txt})     =  {res} 2.34e+06
+{txt}corr(u_i, X) = {res}0{txt} (assumed)                      Prob > chi2       =     {res}0.0000
+
+{txt}{hline 18}{c TT}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{col 1}  RGDP_adj_income{col 19}{c |} Coefficient{col 31}  Std. err.{col 43}      z{col 51}   P>|z|{col 59}     [95% con{col 72}f. interval]
+{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+{space 12}Sesso {c |}
+{space 15}M  {c |}{col 19}{res}{space 2} 4923.334{col 31}{space 2} 56.30435{col 42}{space 1}   87.44{col 51}{space 3}0.000{col 59}{space 4}  4812.98{col 72}{space 3} 5033.689
+{txt}{space 17} {c |}
+{space 8}Age_group {c |}
+{space 11}25-34  {c |}{col 19}{res}{space 2} 3732.498{col 31}{space 2} 14.76767{col 42}{space 1}  252.75{col 51}{space 3}0.000{col 59}{space 4} 3703.554{col 72}{space 3} 3761.442
+{txt}{space 11}35-44  {c |}{col 19}{res}{space 2} 8285.131{col 31}{space 2} 16.66486{col 42}{space 1}  497.16{col 51}{space 3}0.000{col 59}{space 4} 8252.468{col 72}{space 3} 8317.793
+{txt}{space 11}45-54  {c |}{col 19}{res}{space 2} 13001.35{col 31}{space 2} 18.06023{col 42}{space 1}  719.89{col 51}{space 3}0.000{col 59}{space 4} 12965.96{col 72}{space 3} 13036.75
+{txt}{space 11}55-64  {c |}{col 19}{res}{space 2} 16951.64{col 31}{space 2} 20.06994{col 42}{space 1}  844.63{col 51}{space 3}0.000{col 59}{space 4}  16912.3{col 72}{space 3} 16990.98
+{txt}{space 17} {c |}
+Reduced_class_dim {c |}
+{space 11}medie  {c |}{col 19}{res}{space 2}-363.9301{col 31}{space 2} 10.44136{col 42}{space 1}  -34.85{col 51}{space 3}0.000{col 59}{space 4}-384.3948{col 72}{space 3}-343.4654
+{txt}{space 11}micro  {c |}{col 19}{res}{space 2}-2607.471{col 31}{space 2} 12.65547{col 42}{space 1} -206.04{col 51}{space 3}0.000{col 59}{space 4}-2632.276{col 72}{space 3}-2582.667
+{txt}{space 9}piccole  {c |}{col 19}{res}{space 2} -1391.81{col 31}{space 2} 11.64306{col 42}{space 1} -119.54{col 51}{space 3}0.000{col 59}{space 4} -1414.63{col 72}{space 3} -1368.99
+{txt}{space 5}sconosciuta  {c |}{col 19}{res}{space 2}-2219.209{col 31}{space 2} 93.62747{col 42}{space 1}  -23.70{col 51}{space 3}0.000{col 59}{space 4}-2402.716{col 72}{space 3}-2035.703
+{txt}{space 17} {c |}
+{space 3}Tipo_contratto {c |}
+{space 12}temp  {c |}{col 19}{res}{space 2}-2707.588{col 31}{space 2} 8.902841{col 42}{space 1} -304.13{col 51}{space 3}0.000{col 59}{space 4}-2725.037{col 72}{space 3}-2690.138
+{txt}{space 17} {c |}
+{space 8}Qualifica {c |}
+{space 5}apprendista  {c |}{col 19}{res}{space 2}-5486.719{col 31}{space 2} 134.2234{col 42}{space 1}  -40.88{col 51}{space 3}0.000{col 59}{space 4}-5749.792{col 72}{space 3}-5223.646
+{txt}{space 7}dirigente  {c |}{col 19}{res}{space 2} 35998.72{col 31}{space 2} 141.6111{col 42}{space 1}  254.21{col 51}{space 3}0.000{col 59}{space 4} 35721.16{col 72}{space 3} 36276.27
+{txt}{space 7}impiegato  {c |}{col 19}{res}{space 2}-965.8889{col 31}{space 2} 133.5544{col 42}{space 1}   -7.23{col 51}{space 3}0.000{col 59}{space 4}-1227.651{col 72}{space 3} -704.127
+{txt}{space 9}operaio  {c |}{col 19}{res}{space 2}-3703.596{col 31}{space 2} 133.6892{col 42}{space 1}  -27.70{col 51}{space 3}0.000{col 59}{space 4}-3965.622{col 72}{space 3} -3441.57
+{txt}{space 10}quadro  {c |}{col 19}{res}{space 2} 11296.58{col 31}{space 2}  135.411{col 42}{space 1}   83.42{col 51}{space 3}0.000{col 59}{space 4} 11031.18{col 72}{space 3} 11561.98
+{txt}{space 17} {c |}
+{space 12}_cons {c |}{col 19}{res}{space 2} 15255.15{col 31}{space 2}  141.362{col 42}{space 1}  107.92{col 51}{space 3}0.000{col 59}{space 4} 14978.09{col 72}{space 3} 15532.21
+{txt}{hline 18}{c +}{hline 11}{hline 11}{hline 9}{hline 8}{hline 13}{hline 12}
+          sigma_u {c |} {res} 8925.0399
+          {txt}sigma_e {c |} {res} 5373.7498
+              {txt}rho {c |} {res} .73393302{txt}   (fraction of variance due to u_i)
+{hline 18}{c BT}{hline 64}
+
+{com}. 
+. eststo random
+{txt}
+{com}. 
+. // Comparing random and pooled using breush pagan
+. 
+. // NULL —> VARIANCE RE = 0
+. 
+. xttest0
+
+{txt}Breusch and Pagan Lagrangian multiplier test for random effects
+
+        RGDP_adj_income[id_lavoratore,t] = Xb + u[id_lavoratore] + e[id_lavoratore,t]
+
+{col 9}Estimated results:
+{col 26}{c |}{col 34}Var{col 42}SD = sqrt(Var)
+{col 17}{hline 9}{c +}{hline 29}
+{col 16}RGDP_ad~e {c |}  {res} 3.00e+08        17316.7
+{col 24}{txt}e {c |}  {res} 2.89e+07        5373.75
+{col 24}{txt}u {c |}  {res} 7.97e+07        8925.04
+
+{txt}{col 9}Test: Var(u) = 0
+{col 30}{help j_chibar:chibar2(01)} ={col 44}{res} 3.2e+08
+{txt}{col 27}Prob > chibar2 = {col 45}{res} 0.0000
+{txt}
+{com}. 
+. // haussman test to find the best between fixed and random. Reject the null (p value < 0.05) = fixed better. Fail to reject the null = random better
+. 
+. // NULL —> COEFFICIENT DIFF = 0
+. // ACCEPT NULL = RE because smaller STANDARD ERRORS
+. // REJECT NULL = FE accounts for OMITTED VAR BIAS at a HIGHER GROUP LEVEL
+. 
+. hausman LSDV3 random
+
+{txt}{col 18}{hline 4} Coefficients {hline 4}
+{col 14}{c |}{col 21}(b){col 34}(B){col 49}(b-B){col 59}sqrt(diag(V_b-V_B))
+{col 14}{c |}{col 17}   LSDV3    {col 30}   random   {col 46}Difference{col 63}Std. err.
+{hline 13}{c +}{hline 64}
+{space 3}Age_group {c |}
+{space 10}2  {c |}{res}{col 18} 187.0159{col 31} 3732.498{col 47}-3545.482{col 63}        .
+{txt}{space 10}3  {c |}{res}{col 18} 336.9981{col 31} 8285.131{col 47}-7948.133{col 63} 5.798723
+{txt}{space 10}4  {c |}{res}{col 18}  570.767{col 31} 13001.35{col 47}-12430.59{col 63} 10.90664
+{txt}{space 10}5  {c |}{res}{col 18} 222.9074{col 31} 16951.64{col 47}-16728.73{col 63} 15.36153
+{txt}Reduced_cl~m {c |}
+{space 10}2  {c |}{res}{col 18}-24.75208{col 31}-363.9301{col 47}  339.178{col 63}        .
+{txt}{space 10}3  {c |}{res}{col 18}-1877.492{col 31}-2607.471{col 47} 729.9795{col 63}        .
+{txt}{space 10}4  {c |}{res}{col 18}-785.5966{col 31} -1391.81{col 47} 606.2133{col 63}        .
+{txt}{space 10}5  {c |}{res}{col 18}-573.2715{col 31}-2219.209{col 47} 1645.938{col 63}        .
+{txt}2.Tipo_con~o {c |}{res}{col 18}-2124.753{col 31}-2707.588{col 47} 582.8346{col 63}        .
+{txt}{space 3}Qualifica {c |}
+{space 10}2  {c |}{res}{col 18}-1408.369{col 31}-5486.719{col 47}  4078.35{col 63}        .
+{txt}{space 10}3  {c |}{res}{col 18} 34312.19{col 31} 35998.72{col 47}-1686.531{col 63}        .
+{txt}{space 10}4  {c |}{res}{col 18} 904.6126{col 31}-965.8889{col 47} 1870.502{col 63}        .
+{txt}{space 10}5  {c |}{res}{col 18}-934.4494{col 31}-3703.596{col 47} 2769.147{col 63}        .
+{txt}{space 10}6  {c |}{res}{col 18} 11285.25{col 31} 11296.58{col 47}-11.33054{col 63}        .
+{txt}{hline 13}{c BT}{hline 64}
+{ralign 78:b = Consistent under H0 and Ha; obtained from {bf:xtreg}.}
+{ralign 78:B = Inconsistent under Ha, efficient under H0; obtained from {bf:xtreg}.}
+
+Test of H0: Difference in coefficients not systematic
+
+{ralign 11:chi2({res:14})} = (b-B)'[(V_b-V_B)^(-1)](b-B)
+{ralign 11:} = {res:{ralign 10:1052085.91}}
+{ralign 11:Prob > chi2} = {res:{ralign 10:0.0000}}
+(V_b-V_B is not positive definite)
+
+{com}. 
+. // we reject the null. Fixed effects with LSDV3 is better.
+. 
+. esttab using grafici_RGDP_adj_income.rtf, label title(REGRESSIONS RGDP INCOME) mtitles(POLLED LSDV2 LSDV3 RANDOM) cells(b(fmt(0)) p(fmt(2)) ci(par fmt(0))) stats(r2 df_r bic, fmt(3 0 1) label(R-sqr dfres BIC)) replace
+{res}{txt}{p 0 4 2}
+(file {bf}
+grafici_RGDP_adj_income.rtf{rm}
+not found)
+{p_end}
+{res}{txt}(output written to {browse  `"grafici_RGDP_adj_income.rtf"'})
+
+{com}. 
+. eststo clear
+{txt}
+{com}. 
+. save RESEARCH_ON_INCOME, replace
+{txt}{p 0 4 2}
+file {bf}
+RESEARCH_ON_INCOME.dta{rm}
+saved
+{p_end}
+
+{com}. log close
+      {txt}name:  {res}<unnamed>
+       {txt}log:  {res}C:\Users\ac18a\Videos\STATA PROJECTS\STATA PROJECT\LOG_RESEARCH_ON_INCOME.smcl
+  {txt}log type:  {res}smcl
+ {txt}closed on:  {res}30 Nov 2022, 17:21:08
+{txt}{.-}
+{smcl}
+{txt}{sf}{ul off}
